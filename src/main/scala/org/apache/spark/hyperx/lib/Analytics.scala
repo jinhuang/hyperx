@@ -166,8 +166,6 @@ object Analytics extends Logging {
                 val sc = new SparkContext(conf.setAppName("Clustering Coefficients (" +
                         fname + ")"))
 
-                sc.getConf.set("hyperx.debug.k", numPart.toString)
-
                 val hypergraph = loadHypergraph(sc, fname, vertexInput,
                     fieldSeparator, weighted, numPart, inputMode,
                     partitionStrategy, hyperedgeStorageLevel, vertexStorageLevel)
@@ -182,6 +180,7 @@ object Analytics extends Logging {
                 println("| Random Walks |")
                 println("==========================")
 
+                conf.set("hyperx.debug.k", numPart.toString)
                 val sc = new SparkContext(conf.setAppName("Random Walks (" +
                         fname + ")"))
 

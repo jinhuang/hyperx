@@ -81,8 +81,10 @@ class ReplicatedVertexView[VD: ClassTag, ED: ClassTag](
                             val ret = hPartIter.map {
                                 case (pid, hyperedgePartition) => {
 //                                    val eachStart = System.currentTimeMillis()
+                                    logInfo("HYPERX DEBUGGING: update vertices begins...")
                                     val newPartition = hyperedgePartition.updateVertices(shippedVertsIter.flatMap[(VertexId, VD)](_._2.iterator))
 //                                    val newSize = newPartition.size
+                                    logInfo("HYPERX DEBUGGING: update vertices ends")
 //                                    performanceTracker(pid) += (System.currentTimeMillis() - eachStart).toInt
                                     (pid, newPartition)
                                 }

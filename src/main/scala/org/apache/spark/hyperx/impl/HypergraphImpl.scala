@@ -180,6 +180,7 @@ class HypergraphImpl[VD: ClassTag, ED: ClassTag] protected(
         val preAgg = view.hyperedges.partitionsRDD.mapPartitionsWithIndex{
             (i,p) =>
                 p.flatMap {
+                    // choose whether to use index to iterate the tuples
                     case (pid, hyperedgePartition) =>
                         val activeFraction =
                             hyperedgePartition.numActives.getOrElse(0) /
@@ -230,6 +231,13 @@ class HypergraphImpl[VD: ClassTag, ED: ClassTag] protected(
         vertices.aggregateUsingIndex(preAgg, reduceFunc)
     }
 
+  /**
+   *  The same method with the capability to track the time spent on different
+   *  phases during the execution.
+   *
+   *  Map phase => mT, combine phase => cT, map and combine phase => mcT,
+   *  reduce phase => rT
+   */
     override def mapReduceTuplesP[A: ClassTag](sc: SparkContext,
         mT: Array[Accumulator[Int]], cT: Array[Accumulator[Int]],
         mcT: Array[Accumulator[Int]], rT: Array[Accumulator[Int]],
@@ -258,6 +266,7 @@ class HypergraphImpl[VD: ClassTag, ED: ClassTag] protected(
             p => p.flatMap {
                     case (pid, hyperedgePartition) =>
                         val start = System.currentTimeMillis()
+                        logInfo("HYPERX DEBUGGING: select iterators begins...")
                         val activeFraction =
                             hyperedgePartition.numActives.getOrElse(0) /
                                     hyperedgePartition.indexSize.toFloat
@@ -291,18 +300,20 @@ class HypergraphImpl[VD: ClassTag, ED: ClassTag] protected(
                                     hyperedgePartition.isActive(h.srcIds))
                             case _ => hyperedgePartition.iterator
                         }
-
+                        logInfo("HYPERX DEBUGGING: select iterators ends.")
+                        logInfo("HYPERX DEBUGGING: map partition begins for " + pid)
                         // generate hyperedge tuple iterators
                         val mapIterator = hyperedgePartition.upgradeIterator(
                             hyperedgeIter, mapUsesSrcAttr,mapUsesDstAttr)
                         val mapOutputs = mapIterator.flatMap(h => mapFunc(h, mT(pid)))
                         val ret = hyperedgePartition.vertices.aggregateUsingIndexP(mapOutputs,
                             reduceFunc, cT(pid)).iterator
+                        logInfo("HYPERX DEBUGGING: map and combines partition ends for " + pid)
                         mcT(pid) += (System.currentTimeMillis() - start).toInt
                         ret
                 }
 
-        }.setName("HypergraphImpl.mapReduceTuples - preAgg").cache()
+        }.setName("HypergraphImpl.mapReduceTuples - preAgg")
 
         vertices.aggregateUsingIndexP(preAgg, reduceFunc, rT)
     }

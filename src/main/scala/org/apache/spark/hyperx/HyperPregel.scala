@@ -130,9 +130,11 @@ object HyperPregel extends Logging {
             val cT = Array.fill(k)(sc.accumulator(0))
             val mcT = Array.fill(k)(sc.accumulator(0))
             val rT = Array.fill(k)(sc.accumulator(0))
+            logInfo("HYPERX DEBUGGING: MRT begins now...")
             msg = h.mapReduceTuplesP(sc, mT, cT, mcT, rT, hprog, mergeMsg, Some((newVerts,
                     activeDirection))).cache()
             activeMsg = msg.count()
+            logInfo("HYPERX DEBUGGING: MRT ends")
             val mVals = mT.map(_.value)
             val cVals = cT.map(_.value)
             val mcVals = mcT.map(_.value)
@@ -140,12 +142,12 @@ object HyperPregel extends Logging {
             logInfo(("HYPERX DEBUGGING: S1 mapReduceTuple %d generating %d " +
                     "messages inner %d outer %d mr %d (map %d %d combine %d %d mc %d %d reduce %d %d) / %d ms")
                     .format(i, activeMsg,  inner, outer,
-                        System.currentTimeMillis() - mrStart,
-                        HyperUtils.avg(mVals), HyperUtils.dvt(mVals),
-                        HyperUtils.avg(cVals), HyperUtils.dvt(cVals),
-                        HyperUtils.avg(mcVals), HyperUtils.dvt(mcVals),
-                        HyperUtils.avg(rVals), HyperUtils.dvt(rVals),
-                        System.currentTimeMillis() - start))
+                (System.currentTimeMillis() - mrStart).toInt,
+                        HyperUtils.avg(mVals).toInt, HyperUtils.dvt(mVals).toInt,
+                        HyperUtils.avg(cVals).toInt, HyperUtils.dvt(cVals).toInt,
+                        HyperUtils.avg(mcVals).toInt, HyperUtils.dvt(mcVals).toInt,
+                        HyperUtils.avg(rVals).toInt, HyperUtils.dvt(rVals).toInt,
+                (System.currentTimeMillis() - start).toInt))
 
             // unpersist old hypergraphs, vertices, and messages
             oldMsg.unpersist(blocking = false)

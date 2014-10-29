@@ -323,8 +323,7 @@ class VertexRDD[@specialized VD: ClassTag](
 
     def aggregateUsingIndexP[VD2: ClassTag](messages: RDD[(VertexId,VD2)],
         reduceFunc: (VD2,VD2) => VD2, rT: Array[Accumulator[Int]])
-    :
-    VertexRDD[VD2] = {
+    : VertexRDD[VD2] = {
         // shuffle messages to their destinations
         val shuffled = messages.copartitionWithVertices(this.partitioner.get)
         // combine the messages sent to the same vertices
@@ -332,12 +331,15 @@ class VertexRDD[@specialized VD: ClassTag](
             preservesPartitioning = true) { (thisIter, msgIter) =>
             thisIter.map{p =>
                 val start = System.currentTimeMillis()
+                logInfo("HYPERX DEBUGGING: reduce partition begins for " + p._2)
                 val ret = p._1.aggregateUsingIndex(msgIter, reduceFunc)
                 rT(p._2.toInt) += (System.currentTimeMillis() - start).toInt
+                logInfo("HYPERX DEBUGGING: reduce partition ends for " + p._2)
                 ret
             }
         }
-        this.withPartitionsRDD[VD2](parts)
+        val ret = this.withPartitionsRDD[VD2](parts)
+        ret
     }
 
     /**
@@ -412,7 +414,10 @@ class VertexRDD[@specialized VD: ClassTag](
     : RDD[(PartitionId, VertexAttributeBlock[VD])] = {
         partitionsRDD.mapPartitionsWithIndex((i, part) =>
             part.flatMap{p =>
-            p.shipVertexAttributes(shipSrc,shipDst)
+            logInfo("HYPERX DEBUGGING: ship vertex begins...")
+            val ret = p.shipVertexAttributes(shipSrc,shipDst)
+            logInfo("HYPERX DEBUGGING: ship vertex ends")
+            ret
         }, preservesPartitioning = true)
     }
 
