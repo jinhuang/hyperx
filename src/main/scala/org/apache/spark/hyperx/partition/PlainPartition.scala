@@ -1,6 +1,5 @@
-package org.apache.spark.hyperx.partition.obsolete
+package org.apache.spark.hyperx.partition
 
-import org.apache.spark.hyperx.partition.HeuristicPartition
 import org.apache.spark.hyperx.util.HyperUtils
 import org.apache.spark.hyperx.{PartitionId, VertexId}
 import org.apache.spark.rdd.RDD

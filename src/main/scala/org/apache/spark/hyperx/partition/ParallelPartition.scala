@@ -1,7 +1,6 @@
-package org.apache.spark.hyperx.partition.obsolete
+package org.apache.spark.hyperx.partition
 
 import org.apache.spark.hyperx._
-import org.apache.spark.hyperx.partition._
 import org.apache.spark.hyperx.util.collection.HyperXOpenHashSet
 import org.apache.spark.rdd.RDD
 

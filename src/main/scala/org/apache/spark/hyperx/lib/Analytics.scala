@@ -3,7 +3,6 @@ package org.apache.spark.hyperx.lib
 import org.apache.spark.graphx.GraphLoader
 import org.apache.spark.graphx.lib.PageRank
 import org.apache.spark.hyperx.partition._
-import org.apache.spark.hyperx.partition.obsolete._
 import org.apache.spark.hyperx.{Hypergraph, HypergraphLoader}
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.{Logging, SparkConf, SparkContext, storage}
@@ -48,7 +47,7 @@ object Analytics extends Logging {
         def pickPartitioner(v: String): HeuristicPartition = {
             v match {
                 case "Plain" => new PlainPartition
-                case "Test" => new GreedyPartition
+                case "Test" => new SimplePartition
                 case "Random" => new RandomPartition
                 case "OnePass" => new OnePassSerialPartition
                 case "Local" => new LocalSerialPartition

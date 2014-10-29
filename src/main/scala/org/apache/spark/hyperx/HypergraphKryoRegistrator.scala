@@ -3,14 +3,12 @@ package org.apache.spark.hyperx
 import com.esotericsoftware.kryo.Kryo
 import org.apache.spark.hyperx.impl._
 import org.apache.spark.hyperx.partition._
-import org.apache.spark.hyperx.partition.obsolete._
-import org.apache.spark.hyperx.util.collection.{HyperXOpenHashSet,
-HyperXOpenHashMap}
+import org.apache.spark.hyperx.util.collection.{HyperXOpenHashMap, HyperXOpenHashSet}
 import org.apache.spark.serializer.KryoRegistrator
 import org.apache.spark.util.BoundedPriorityQueue
 import org.apache.spark.util.collection.{OpenHashMap, OpenHashSet}
 
-import scala.collection.{immutable, BitSet, mutable}
+import scala.collection.{BitSet, immutable, mutable}
 
 /**
  * Register HyperX classes with Kryo
@@ -38,10 +36,10 @@ class HypergraphKryoRegistrator extends KryoRegistrator {
         kryo.register(classOf[HeuristicPartition])
         kryo.register(classOf[PlainPartition])
         kryo.register(classOf[SerialPartition])
-        kryo.register(classOf[GreedyPartition])
+        kryo.register(classOf[SimplePartition])
         kryo.register(classOf[RandomPartition])
         kryo.register(classOf[OnePassSerialPartition])
-        kryo.register(classOf[GreedyPartition])
+        kryo.register(classOf[SimplePartition])
         kryo.register(classOf[LocalSerialPartition])
         kryo.register(classOf[AlternateSerialPartition])
         kryo.register(classOf[ParallelPartition])

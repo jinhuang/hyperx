@@ -4,7 +4,7 @@ import org.apache.spark.hyperx._
 import org.apache.spark.hyperx.util.HyperUtils
 import org.apache.spark.hyperx.util.collection.HyperXOpenHashMap
 
-class GreedyPartition extends SerialPartition{
+class SimplePartition extends SerialPartition{
     override private[partition] def search(): Unit = {
         greedyHyperedges()
         greedyVertices()

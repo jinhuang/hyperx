@@ -1,4 +1,4 @@
-package org.apache.spark.hyperx.partition.obsolete
+package org.apache.spark.hyperx.partition
 
 class AlternateSerialPartition extends GreedySerialPartition {
 
