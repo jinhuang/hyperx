@@ -1,7 +1,5 @@
 package org.apache.spark.hyperx
 
-import org.apache.spark.hyperx.util.HyperUtils
-import org.apache.spark.hyperx.util.collection.HyperXOpenHashSet
 import org.apache.spark.util.collection.BitSet
 
 import scala.collection.mutable
@@ -106,25 +104,6 @@ class HypergraphOps[VD: ClassTag, ED: ClassTag](hypergraph: Hypergraph[VD,
                     (v, hyperedgeTuple.dstAttr.keySet.getBitSet)).toIterator
         }
     }
-
-    private def degreesHashIterator(hyperedgeTuple: HyperedgeTuple[VD, ED],
-        hyperedgeDirection: HyperedgeDirection):Iterator[(VertexId, HyperXOpenHashSet[VertexId])] = {
-        hyperedgeDirection match {
-            case HyperedgeDirection.In =>
-                hyperedgeTuple.dstAttr.keySet.iterator.map(v =>
-                    (v, hyperedgeTuple.srcAttr.keySet)).toIterator
-            case HyperedgeDirection.Out =>
-                hyperedgeTuple.srcAttr.keySet.iterator.map(v =>
-                    (v, hyperedgeTuple.dstAttr.keySet)).toIterator
-            case HyperedgeDirection.Either | HyperedgeDirection.Both =>
-                hyperedgeTuple.dstAttr.keySet.iterator.map(v =>
-                    (v, hyperedgeTuple.srcAttr.keySet)).toIterator ++
-                        hyperedgeTuple.srcAttr.keySet.iterator.map(v =>
-                            (v, hyperedgeTuple.dstAttr.keySet)).toIterator
-        }
-    }
-
-
 
     /**
      * Collect the neighbor vertex attributes for each vertex
@@ -393,13 +372,6 @@ class HypergraphOps[VD: ClassTag, ED: ClassTag](hypergraph: Hypergraph[VD,
         hypergraph.mapReduceTuples[BitSet]({tuple =>
             degreesIterator(tuple, hyperedgeDirection)
         }, _ | _).mapValues(_.cardinality())
-    }
-
-    private def degreesHashRDD(hyperedgeDirection: HyperedgeDirection):
-    VertexRDD[Int] = {
-        hypergraph.mapReduceTuples[HyperXOpenHashSet[VertexId]]({tuple =>
-            degreesHashIterator(tuple, hyperedgeDirection)
-        }, HyperUtils.union).mapValues(_.size)
     }
 
     private def incidentRDD(hyperedgeDirection: HyperedgeDirection)

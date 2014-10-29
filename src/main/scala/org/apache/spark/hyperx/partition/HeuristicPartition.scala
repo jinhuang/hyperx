@@ -20,17 +20,7 @@ abstract class HeuristicPartition extends PartitionStrategy {
     private[partition] var degrees: Array[Int] = null
     private[partition] var replicas: Array[Int] = null
     private[partition] var locals:Array[mutable.HashSet[VertexId]] = null
-    private[partition] var demands: Array[HyperXOpenHashMap[VertexId, Int]] = null
-
-//    override def getPartition(srcIds: VertexSet, dstIds: VertexSet)
-//    : PartitionId = {
-//        val string = HyperUtils.toString((srcIds, dstIds))
-//        hyperedges(string)
-//    }
-//
-//    override def getPartition(id: VertexId): PartitionId = {
-//        vertices(id)
-//    }
+    private[partition] var demands: Array[mutable.OpenHashMap[VertexId, Int]] = null
 
     private[partition] def materialize() = {
         locals = localVertices()
@@ -47,8 +37,8 @@ abstract class HeuristicPartition extends PartitionStrategy {
     }
 
     private[partition] def demandVertices()
-    : Array[HyperXOpenHashMap[VertexId, Int]] = {
-        demands = Array.fill(k)(new HyperXOpenHashMap[VertexId, Int]())
+    : Array[mutable.OpenHashMap[VertexId, Int]] = {
+        demands = Array.fill(k)(new mutable.OpenHashMap[VertexId, Int]())
         hyperedges.foreach(h =>
             if (h._2 >= 0)
                 HyperUtils.iteratorFromHString(h._1).foreach(v =>
@@ -92,11 +82,11 @@ abstract class HeuristicPartition extends PartitionStrategy {
     }
 
     private[partition] def hasDemand(p: PartitionId, v: VertexId): Boolean = {
-        demands(p).hasKey(v) && demands(p)(v) > 0
+        demands(p).contains(v) && demands(p)(v) > 0
     }
 
     private[partition] def addVertexToDemand(p: PartitionId, v: VertexId): Unit = {
-        if (demands(p).hasKey(v)) {
+        if (demands(p).contains(v)) {
             demands(p).update(v, demands(p)(v) + 1)
         }
         else {
@@ -105,9 +95,9 @@ abstract class HeuristicPartition extends PartitionStrategy {
     }
 
     private[partition] def removeVertexFromDemand(p: PartitionId, v: VertexId): Unit = {
-        if (demands(p).hasKey(v)) {
-            val newVal = demands(p)(v) - 1
-            demands(p).update(v, if (newVal > 0) newVal else 0)
+        if (demands(p).contains(v)) {
+            if (demands(p)(v) > 0) demands(p).update(v, demands(p)(v) - 1)
+            if (demands(p)(v) == 0) demands(p).remove(v)
         }
     }
 

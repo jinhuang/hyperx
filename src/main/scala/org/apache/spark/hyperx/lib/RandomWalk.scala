@@ -34,12 +34,12 @@ object RandomWalk extends Logging {
         run(hypergraph, maxIter, hypergraph.pickRandomVertices(num))
     }
 
-    def run[VD: ClassTag, ED: ClassTag]( hypergraph: Hypergraph[VD, ED],
+    def run[VD: ClassTag, ED: ClassTag](hypergraph: Hypergraph[VD, ED],
         numIter: Int, startSet: mutable.HashSet[VertexId], resetProb: Double = 0.15)
     : Hypergraph[Double, HyperAttr[Double]] = {
 
         val walkHypergraph: Hypergraph[Double, HyperAttr[Double]] = hypergraph
-            .outerJoinVertices(hypergraph.outDegrees){(vid, vdata, deg) =>
+            .outerJoinVertices(hypergraph.outIncidents){(vid, vdata, deg) =>
                 deg.getOrElse[Int](0)}
             .mapTuples(e => HyperUtils.divide(1.0, e.srcAttr))
             .mapVertices((id, attr) => if (startSet.contains(id)) 1.0 else 0.0)
@@ -51,18 +51,15 @@ object RandomWalk extends Logging {
             resetProb + (1.0 - resetProb) * msgSum
 
         def hyperedgeProg(hyperedge: HyperedgeTuple[Double,HyperAttr[Double]]
-                          ,srcAcc: Accumulator[Int], dstAcc: Accumulator[Int] )
+                          , acc: Accumulator[Int])
         = {
             var start = System.currentTimeMillis()
-//            val srcSet = hyperedge.srcAttr.iterator.toSet
-//            val dstSet = hyperedge.dstAttr.iterator.toSet
             val dstSize = hyperedge.dstAttr.size
             val msgVal = hyperedge.srcAttr.map(attr =>
                 attr._2 * hyperedge.attr(attr._1)).sum * 1.0 / dstSize
-            srcAcc += (System.currentTimeMillis() - start).toInt
             start = System.currentTimeMillis()
             val ret = hyperedge.dstAttr.map(attr => (attr._1, msgVal)).toIterator
-            dstAcc += (System.currentTimeMillis() - start).toInt
+            acc += (System.currentTimeMillis() - start).toInt
             ret
         }
 
@@ -70,7 +67,7 @@ object RandomWalk extends Logging {
 
         val initialMessage = 0.0
 
-        HyperPregel.run(walkHypergraph, initialMessage, numIter,
+        HyperPregel.run(walkHypergraph.hyperedges.context, walkHypergraph, initialMessage, numIter,
             activeDirection = HyperedgeDirection.Out)(
                     vertexProg, hyperedgeProg, messageCombiner)
 

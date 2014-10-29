@@ -7,7 +7,7 @@ import org.apache.spark.hyperx.util.collection.HyperXOpenHashMap
 import org.apache.spark.hyperx.util.{BytecodeUtils, HyperUtils}
 import org.apache.spark.rdd._
 import org.apache.spark.storage.StorageLevel
-import org.apache.spark.{Accumulator, HashPartitioner, Logging, Partitioner}
+import org.apache.spark._
 
 import scala.reflect.{ClassTag, classTag}
 import scala.util.Random
@@ -230,9 +230,10 @@ class HypergraphImpl[VD: ClassTag, ED: ClassTag] protected(
         vertices.aggregateUsingIndex(preAgg, reduceFunc)
     }
 
-    override def mapReduceTuplesP[A: ClassTag](
-        mapFunc: (HyperedgeTuple[VD,ED], Accumulator[Int],
-        Accumulator[Int]) => Iterator[(VertexId, A)],
+    override def mapReduceTuplesP[A: ClassTag](sc: SparkContext,
+        mT: Array[Accumulator[Int]], cT: Array[Accumulator[Int]],
+        mcT: Array[Accumulator[Int]], rT: Array[Accumulator[Int]],
+        mapFunc: (HyperedgeTuple[VD,ED], Accumulator[Int]) => Iterator[(VertexId, A)],
         reduceFunc: (A, A) => A,
         activeSetOpt: Option[(VertexRDD[_], HyperedgeDirection)] = None)
     : VertexRDD[A] = {
@@ -253,20 +254,13 @@ class HypergraphImpl[VD: ClassTag, ED: ClassTag] protected(
         }
         val activeDirectionOpt = activeSetOpt.map(_._2)
 
-        val mapStart = System.currentTimeMillis()
-        val sc = replicatedVertexView.hyperedges.partitionsRDD.context
-        val mapTracker = Array.fill(28)(sc.accumulator(0))
-        val combineTracker = Array.fill(14)(sc.accumulator(0))
-        val upgradeTracker = Array.fill(14)(sc.accumulator(0))
-        val preAggTracker = Array.fill(14)(sc.accumulator(0))
-        val preAgg = view.hyperedges.partitionsRDD.mapPartitionsWithIndex{
-            (i,p) =>
-                p.flatMap {
+        val preAgg = view.hyperedges.partitionsRDD.mapPartitions{
+            p => p.flatMap {
                     case (pid, hyperedgePartition) =>
+                        val start = System.currentTimeMillis()
                         val activeFraction =
                             hyperedgePartition.numActives.getOrElse(0) /
                                     hyperedgePartition.indexSize.toFloat
-                        val start = System.currentTimeMillis()
                         val hyperedgeIter = activeDirectionOpt match {
                             case Some(HyperedgeDirection.Both) =>
                                 if (activeFraction < 0.8) {
@@ -299,35 +293,18 @@ class HypergraphImpl[VD: ClassTag, ED: ClassTag] protected(
                         }
 
                         // generate hyperedge tuple iterators
-                        // todo: to balance the hyperedge processing
-                        val mapIterator = hyperedgePartition.upgradeIteratorP(
-                            hyperedgeIter, upgradeTracker(pid), mapUsesSrcAttr,
-                            mapUsesDstAttr)
-                        val mapOutputs = mapIterator.flatMap(h => mapFunc(h,
-                            mapTracker(pid * 2),
-                            mapTracker(pid * 2 + 1)))
-                        combineTracker(pid) += hyperedgePartition.vertices.index.size
-                        val ret = hyperedgePartition.vertices.aggregateUsingIndex(mapOutputs,
-                            reduceFunc, combineTracker(pid)).iterator
-                        preAggTracker(i) += (System.currentTimeMillis() - start).toInt
+                        val mapIterator = hyperedgePartition.upgradeIterator(
+                            hyperedgeIter, mapUsesSrcAttr,mapUsesDstAttr)
+                        val mapOutputs = mapIterator.flatMap(h => mapFunc(h, mT(pid)))
+                        val ret = hyperedgePartition.vertices.aggregateUsingIndexP(mapOutputs,
+                            reduceFunc, cT(pid)).iterator
+                        mcT(pid) += (System.currentTimeMillis() - start).toInt
                         ret
                 }
+
         }.setName("HypergraphImpl.mapReduceTuples - preAgg").cache()
-        preAgg.count()
-        logInfo("HYPERX DEBUGGING: driver map " + (System.currentTimeMillis() - mapStart))
-        val mapValues = (0 until 14).map(i => mapTracker(2 * i).value + mapTracker(2* i + 1).value).toArray
-        val combineValues = (0 until 14).map(i => preAggTracker(i).value - mapTracker(2 * i).value - mapTracker(2*i + 1).value).toArray
-        val demandValues = (0 until 14).map(i => combineTracker(i).value).toArray
-        logInfo("HYPERX DEBUGGING: parallel map avg %d std %d max %d".format(
-            HyperUtils.avg(mapValues).toInt, HyperUtils.dvt(mapValues).toInt,
-            mapValues.max))
-        logInfo("HYPERX DEBUGGING: parallel combine avg %d std %d max %d".format(
-            HyperUtils.avg(combineValues).toInt, HyperUtils.dvt(combineValues).toInt,
-            combineValues.max))
-        logInfo("HYPERX DEBUGGING: demands avg %d std %d".format(
-            HyperUtils.avg(demandValues).toInt, HyperUtils.dvt(demandValues).toInt
-        ))
-        vertices.aggregateUsingIndex(preAgg, reduceFunc)
+
+        vertices.aggregateUsingIndexP(preAgg, reduceFunc, rT)
     }
 
     private def accessesVertexAttr(closure: AnyRef, attrName: String)

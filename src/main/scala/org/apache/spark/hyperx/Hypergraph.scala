@@ -1,6 +1,6 @@
 package org.apache.spark.hyperx
 
-import org.apache.spark.Accumulator
+import org.apache.spark.{SparkContext, Accumulator}
 import org.apache.spark.hyperx.impl.HypergraphImpl
 import org.apache.spark.hyperx.partition.PartitionStrategy
 import org.apache.spark.rdd.RDD
@@ -285,8 +285,10 @@ Serializable {
         activeSetOpt: Option[(VertexRDD[_],HyperedgeDirection)] = None)
     : VertexRDD[A]
 
-    def mapReduceTuplesP[A: ClassTag](
-        mapFunc: (HyperedgeTuple[VD,ED], Accumulator[Int], Accumulator[Int]) => Iterator[(VertexId, A)],
+    def mapReduceTuplesP[A: ClassTag](sc: SparkContext,
+        mT: Array[Accumulator[Int]], cT: Array[Accumulator[Int]],
+        mcT: Array[Accumulator[Int]], rT: Array[Accumulator[Int]],
+        mapFunc: (HyperedgeTuple[VD,ED], Accumulator[Int]) => Iterator[(VertexId, A)],
         reduceFunc: (A, A) => A,
         activeSetOpt: Option[(VertexRDD[_],HyperedgeDirection)] = None)
     : VertexRDD[A]

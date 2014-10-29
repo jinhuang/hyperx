@@ -1,6 +1,8 @@
 package org.apache.spark.hyperx
 
-import org.apache.spark.{Accumulator, Logging}
+import org.apache.spark.hyperx.util.HyperUtils
+import org.apache.spark.{SparkContext, Accumulator, Logging}
+import org.apache.spark.SparkContext._
 
 import scala.reflect.ClassTag
 
@@ -70,17 +72,22 @@ object HyperPregel extends Logging {
     }
 
     def run[VD: ClassTag, ED: ClassTag, A: ClassTag](
+        sc: SparkContext,
         hypergraph: Hypergraph[VD, ED], initialMsg: A,
         maxIterations: Int = Int.MaxValue,
         activeDirection: HyperedgeDirection = HyperedgeDirection.Either)(
         vprog: (VertexId, VD, A) => VD,
-        hprog: (HyperedgeTuple[VD, ED], Accumulator[Int], Accumulator[Int]) => Iterator[(VertexId, A)],
+        hprog: (HyperedgeTuple[VD, ED], Accumulator[Int]) => Iterator[(VertexId, A)],
         mergeMsg: (A, A) => A): Hypergraph[VD, ED] = {
 
         var h = hypergraph.mapVertices((vid, data) =>
             vprog(vid, data, initialMsg)).cache()
 
-        var msg = h.mapReduceTuplesP(hprog, mergeMsg)
+        val k = sc.getConf.get("hyperx.debug.k").toInt
+
+        var msg = h.mapReduceTuplesP(sc,
+            Array.fill(k)(sc.accumulator(0)), Array.fill(k)(sc.accumulator(0)), Array.fill(k)(sc.accumulator(0)), Array.fill(k)(sc.accumulator(0)),
+            hprog, mergeMsg)
 
         var activeMsg = msg.count()
 
@@ -119,13 +126,25 @@ object HyperPregel extends Logging {
             // Hyperedge computation
             // PARTITION: hyperedge degree balance
             val mrStart = System.currentTimeMillis()
-            msg = h.mapReduceTuplesP(hprog, mergeMsg, Some((newVerts,
+            val mT = Array.fill(k)(sc.accumulator(0))
+            val cT = Array.fill(k)(sc.accumulator(0))
+            val mcT = Array.fill(k)(sc.accumulator(0))
+            val rT = Array.fill(k)(sc.accumulator(0))
+            msg = h.mapReduceTuplesP(sc, mT, cT, mcT, rT, hprog, mergeMsg, Some((newVerts,
                     activeDirection))).cache()
             activeMsg = msg.count()
+            val mVals = mT.map(_.value)
+            val cVals = cT.map(_.value)
+            val mcVals = mcT.map(_.value)
+            val rVals = rT.map(_.value)
             logInfo(("HYPERX DEBUGGING: S1 mapReduceTuple %d generating %d " +
-                    "messages %d %d %d / %d ms")
+                    "messages inner %d outer %d mr %d (map %d %d combine %d %d mc %d %d reduce %d %d) / %d ms")
                     .format(i, activeMsg,  inner, outer,
                         System.currentTimeMillis() - mrStart,
+                        HyperUtils.avg(mVals), HyperUtils.dvt(mVals),
+                        HyperUtils.avg(cVals), HyperUtils.dvt(cVals),
+                        HyperUtils.avg(mcVals), HyperUtils.dvt(mcVals),
+                        HyperUtils.avg(rVals), HyperUtils.dvt(rVals),
                         System.currentTimeMillis() - start))
 
             // unpersist old hypergraphs, vertices, and messages

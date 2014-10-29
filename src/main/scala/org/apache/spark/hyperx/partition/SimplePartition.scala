@@ -2,7 +2,8 @@ package org.apache.spark.hyperx.partition
 
 import org.apache.spark.hyperx._
 import org.apache.spark.hyperx.util.HyperUtils
-import org.apache.spark.hyperx.util.collection.HyperXOpenHashMap
+
+import scala.collection.mutable
 
 class SimplePartition extends SerialPartition{
     override private[partition] def search(): Unit = {
@@ -14,7 +15,7 @@ class SimplePartition extends SerialPartition{
     // greedy balance the degrees and demands
     private[partition] def greedyHyperedges(): Unit = {
         degrees = Array.fill(k)(0)
-        demands = Array.fill(k)(new HyperXOpenHashMap[VertexId, Int]())
+        demands = Array.fill(k)(new mutable.OpenHashMap[VertexId, Int]())
         hyperedges.foreach { h =>
 
             val choice = (0 until k).map(i =>
@@ -24,8 +25,7 @@ class SimplePartition extends SerialPartition{
             val equvCount = HyperUtils.effectiveCount(degree._1, degree._2)
             degrees(choice) += equvCount.toInt
             HyperUtils.iteratorFromHString(h._1).foreach{v =>
-                if (!demands(choice).hasKey(v))
-                    demands(choice).update(v, 1)
+                demands(choice).update(v, 1)
             }
             hyperedges.update(h._1, choice)
         }

@@ -252,7 +252,7 @@ VertexPartitionBaseOpsConstructor]
         this.withValues(newValues).withMask(newMask)
     }
 
-    def aggregateUsingIndex[VD2: ClassTag](
+    def aggregateUsingIndexP[VD2: ClassTag](
         iter: Iterator[Product2[VertexId, VD2]], reduceFunc: (VD2, VD2) => VD2,
         tracker: Accumulator[Int])
     : Self[VD2] = {

@@ -313,12 +313,29 @@ class VertexRDD[@specialized VD: ClassTag](
     VertexRDD[VD2] = {
         // shuffle messages to their destinations
         val shuffled = messages.copartitionWithVertices(this.partitioner.get)
-        var start = System.currentTimeMillis()
-        start = System.currentTimeMillis()
         // combine the messages sent to the same vertices
         val parts = partitionsRDD.zipPartitions(shuffled,
             preservesPartitioning = true) { (thisIter, msgIter) =>
                 thisIter.map(_.aggregateUsingIndex(msgIter, reduceFunc))
+        }
+        this.withPartitionsRDD[VD2](parts)
+    }
+
+    def aggregateUsingIndexP[VD2: ClassTag](messages: RDD[(VertexId,VD2)],
+        reduceFunc: (VD2,VD2) => VD2, rT: Array[Accumulator[Int]])
+    :
+    VertexRDD[VD2] = {
+        // shuffle messages to their destinations
+        val shuffled = messages.copartitionWithVertices(this.partitioner.get)
+        // combine the messages sent to the same vertices
+        val parts = partitionsRDD.zipWithIndex().zipPartitions(shuffled,
+            preservesPartitioning = true) { (thisIter, msgIter) =>
+            thisIter.map{p =>
+                val start = System.currentTimeMillis()
+                val ret = p._1.aggregateUsingIndex(msgIter, reduceFunc)
+                rT(p._2.toInt) += (System.currentTimeMillis() - start).toInt
+                ret
+            }
         }
         this.withPartitionsRDD[VD2](parts)
     }

@@ -51,10 +51,6 @@ abstract class GreedySerialPartition extends SerialPartition {
     }
 
     private[partition] def addVertex(v: VertexId): PartitionId = {
-//        val newPid = (0 until k)
-//            .map(i =>
-//                (i, costAddVertex(v, i, hasDemand(i, v))))
-//            .minBy(_._2)._1
         // a sub heuristics to balance the number of vertices on partitions
         val costPairs = (0 until k).map(i => (i, costAddVertex(v, i, hasDemand(i, v))))
         val minCost = costPairs.minBy(_._2)._2
@@ -69,17 +65,11 @@ abstract class GreedySerialPartition extends SerialPartition {
     private[partition] def moveVertex(v: (VertexId, PartitionId))
     : PartitionId = {
         val relevant = (0 until k).map(i => hasDemand(i, v._1))
-//        val newPid = (0 until k)
-//            .map(i =>
-//                (i, costMoveVertex(v._1, v._2, i, relevant(v._2), relevant(i))))
-//            .minBy(_._2)._1
         val costPairs = (0 until k).map(i => (i, costMoveVertex(v._1, v._2, i, relevant(v._2), relevant(i))))
         val minCost = costPairs.minBy(_._2)._2
         val newPid = costPairs.filter(p => (p._2 - minCost) <= 0.00001).map(p => (p._1, locals(p._1).size)).minBy(_._2)._1
         assign(v._1, newPid)
-//        val start = System.currentTimeMillis()
         moveMaterialized(v._1, v._2, newPid)
-//        logInfo("HYPERX DEBUGGING: moveMaterialized consumes %d ms".format(System.currentTimeMillis() - start))
         newPid
     }
 
@@ -94,12 +84,10 @@ abstract class GreedySerialPartition extends SerialPartition {
     private def costAddHyperedge(h: String, i: PartitionId,
         extraR: Int, extraDm: Int)
     : Double = {
-        val hSet = HyperUtils.iteratorFromHString(h).toSet
-        val hSize = hSet.size
         val degree = HyperUtils.countDetailDegreeFromHString(h)
         val avgDg = (degrees.sum + HyperUtils.effectiveCount(degree._1, degree._2)) * 1.0 / k
         val avgR = (replicas.sum + extraR) * 1.0 / k
-        val avgDm = (demands.map(_.keySet.size).sum + extraDm) * 1.0 / k
+        val avgDm = (demands.map(_.size).sum + extraDm) * 1.0 / k
 
         2 * (extraR + replicas.sum) +
         costReplica * Math.pow((0 until k).filter(_ != i).map(r =>
@@ -260,9 +248,6 @@ abstract class GreedySerialPartition extends SerialPartition {
             replicas(from) += extraReplicas
             replicas(to) -= reducedReplicas
 
-            //        val fromSet = new OpenHashSet[VertexId]
-            //        locals(from).iterator.filter(_ != v).foreach(fromSet.add)
-            //        locals(from) = fromSet
             locals(from).remove(v)
             locals(to).add(v)
         }

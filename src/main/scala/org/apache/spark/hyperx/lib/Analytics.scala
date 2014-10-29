@@ -47,7 +47,7 @@ object Analytics extends Logging {
         def pickPartitioner(v: String): HeuristicPartition = {
             v match {
                 case "Plain" => new PlainPartition
-                case "Test" => new SimplePartition
+                case "Simple" => new SimplePartition
                 case "Random" => new RandomPartition
                 case "OnePass" => new OnePassSerialPartition
                 case "Local" => new LocalSerialPartition
@@ -165,6 +165,8 @@ object Analytics extends Logging {
 
                 val sc = new SparkContext(conf.setAppName("Clustering Coefficients (" +
                         fname + ")"))
+
+                sc.getConf.set("hyperx.debug.k", numPart.toString)
 
                 val hypergraph = loadHypergraph(sc, fname, vertexInput,
                     fieldSeparator, weighted, numPart, inputMode,
