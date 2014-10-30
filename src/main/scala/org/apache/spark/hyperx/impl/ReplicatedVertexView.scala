@@ -1,6 +1,6 @@
 package org.apache.spark.hyperx.impl
 
-import org.apache.spark.Logging
+import org.apache.spark.{Accumulator, Logging}
 import org.apache.spark.SparkContext._
 import org.apache.spark.hyperx.{HyperedgeRDD, VertexId, VertexRDD}
 import org.apache.spark.rdd.RDD
@@ -70,9 +70,7 @@ class ReplicatedVertexView[VD: ClassTag, ED: ClassTag](
                             "shippedVerts %s %s (broadcast)")
                         .format(includeSrc, includeDst, shipSrc, shipDst))
                     .partitionBy(hyperedges.partitioner.get)
-            //logInfo("HYPERX DEBUGGING: S1.0.0 upgrade.shipVertexAttributes in %d ms".format(System.currentTimeMillis() - start))
             val sc = this.hyperedges.context
-//            val performanceTracker = Array.fill(hyperedges.partitionsRDD.count().toInt)(sc.accumulator(0))
             start = System.currentTimeMillis()
             val newHyperedges: HyperedgeRDD[ED, VD] =
                 hyperedges.withPartitionsRDD(
@@ -80,12 +78,10 @@ class ReplicatedVertexView[VD: ClassTag, ED: ClassTag](
                         (hPartIter, shippedVertsIter) =>
                             val ret = hPartIter.map {
                                 case (pid, hyperedgePartition) => {
-//                                    val eachStart = System.currentTimeMillis()
-                                    logInfo("HYPERX DEBUGGING: update vertices begins...")
-                                    val newPartition = hyperedgePartition.updateVertices(shippedVertsIter.flatMap[(VertexId, VD)](_._2.iterator))
-//                                    val newSize = newPartition.size
-                                    logInfo("HYPERX DEBUGGING: update vertices ends")
-//                                    performanceTracker(pid) += (System.currentTimeMillis() - eachStart).toInt
+                                    val newPartition = hyperedgePartition
+                                        .updateVertices(shippedVertsIter
+                                            .flatMap[(VertexId, VD)](
+                                                _._2.iterator))
                                     (pid, newPartition)
                                 }
                             }
@@ -93,6 +89,52 @@ class ReplicatedVertexView[VD: ClassTag, ED: ClassTag](
                         }
                 )
 //            val count = newHyperedges.count()
+            //logInfo("HYPERX DEBUGGING: S1.0.1 upgrade.zipPartition in %d ms".format(System.currentTimeMillis() - start))
+            hyperedges = newHyperedges
+            hasSrcIds = includeSrc
+            hasDstIds = includeDst
+        }
+    }
+
+    def upgradeP(vertices: VertexRDD[VD], includeSrc: Boolean,
+                includeDst: Boolean, sT: Array[Accumulator[Int]],
+                zT: Array[Accumulator[Int]], sStart: Array[Accumulator[Long]],
+                zStart: Array[Accumulator[Long]], sCpl: Array[Accumulator[Long]], zCpl: Array[Accumulator[Long]])
+    : Unit = {
+        val shipSrc = includeSrc && !hasSrcIds
+        val shipDst = includeDst && !hasDstIds
+        if (shipSrc || shipDst) {
+
+            var start = System.currentTimeMillis()
+            val shippedVerts: RDD[(Int, VertexAttributeBlock[VD])] =
+                vertices.shipVertexAttributesP(shipSrc, shipDst, sT, sStart, sCpl).setName(
+                    ("ReplicatedVertexView.upgrade(%s, %s) - " +
+                            "shippedVerts %s %s (broadcast)")
+                            .format(includeSrc, includeDst, shipSrc, shipDst))
+                        .partitionBy(hyperedges.partitioner.get)
+            val sc = this.hyperedges.context
+            start = System.currentTimeMillis()
+            val newHyperedges: HyperedgeRDD[ED, VD] =
+                hyperedges.withPartitionsRDD(
+                    hyperedges.partitionsRDD.zipPartitions(shippedVerts) {
+                        (hPartIter, shippedVertsIter) =>
+                            val ret = hPartIter.map {
+                                case (pid, hyperedgePartition) => {
+                                    val start = System.currentTimeMillis()
+                                    zStart(pid) += start
+                                    val newPartition = hyperedgePartition
+                                            .updateVertices(shippedVertsIter
+                                            .flatMap[(VertexId, VD)](
+                                                _._2.iterator))
+                                    zT(pid) += (System.currentTimeMillis() - start).toInt
+                                    zCpl(pid) += System.currentTimeMillis()
+                                    (pid, newPartition)
+                                }
+                            }
+                            ret
+                    }
+                )
+            //            val count = newHyperedges.count()
             //logInfo("HYPERX DEBUGGING: S1.0.1 upgrade.zipPartition in %d ms".format(System.currentTimeMillis() - start))
             hyperedges = newHyperedges
             hasSrcIds = includeSrc
@@ -119,6 +161,27 @@ class ReplicatedVertexView[VD: ClassTag, ED: ClassTag](
                 case (pid, hyperedgePartition) =>
                     (pid, hyperedgePartition.withActiveSet(shippedActivesIter
                             .flatMap(_._2.iterator)))
+            }
+        })
+        new ReplicatedVertexView(newHyperedges, hasSrcIds, hasDstIds)
+    }
+
+    def withActiveSetP(actives: VertexRDD[_], start: Array[Accumulator[Long]], complete: Array[Accumulator[Long]], sT: Array[Accumulator[Int]], zT: Array[Accumulator[Int]]): ReplicatedVertexView[VD, ED] = {
+        val shippedActives = actives.shipVertexIdsP(start, sT)
+                .setName("ReplicatedVertexView.withActiveSet - shippedActives" +
+                " (broadcast)")
+                .partitionBy(hyperedges.partitioner.get)
+
+        val newHyperedges = hyperedges.withPartitionsRDD[ED,
+                VD](hyperedges.partitionsRDD.zipPartitions(shippedActives) {
+            (hPartIter, shippedActivesIter) => hPartIter.map {
+                case (pid, hyperedgePartition) =>
+                    val start = System.currentTimeMillis()
+                    val ret = (pid, hyperedgePartition.withActiveSet(shippedActivesIter
+                            .flatMap(_._2.iterator)))
+                    complete(pid) += System.currentTimeMillis()
+                    zT(pid) += (System.currentTimeMillis() - start).toInt
+                    ret
             }
         })
         new ReplicatedVertexView(newHyperedges, hasSrcIds, hasDstIds)

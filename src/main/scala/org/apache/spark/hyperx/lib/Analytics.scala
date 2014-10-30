@@ -47,14 +47,7 @@ object Analytics extends Logging {
         def pickPartitioner(v: String): HeuristicPartition = {
             v match {
                 case "Plain" => new PlainPartition
-                case "Simple" => new SimplePartition
                 case "Random" => new RandomPartition
-                case "OnePass" => new OnePassSerialPartition
-                case "Local" => new LocalSerialPartition
-                case "Alternate" => new AlternateSerialPartition
-                case "OnePassP" => new OnePassParallelPartition
-                case "LocalP" => new LocalParallelPartition
-                case "AlternateP" => new AlternateParallelPartition
                 case _ => throw new IllegalArgumentException("Invalid " +
                         "PartitionStrategy: " + v)
             }

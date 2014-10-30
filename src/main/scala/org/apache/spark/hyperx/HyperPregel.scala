@@ -77,7 +77,8 @@ object HyperPregel extends Logging {
         maxIterations: Int = Int.MaxValue,
         activeDirection: HyperedgeDirection = HyperedgeDirection.Either)(
         vprog: (VertexId, VD, A) => VD,
-        hprog: (HyperedgeTuple[VD, ED], Accumulator[Int]) => Iterator[(VertexId, A)],
+        hprog: (HyperedgeTuple[VD, ED], Accumulator[Int]) =>
+                Iterator[(VertexId, A)],
         mergeMsg: (A, A) => A): Hypergraph[VD, ED] = {
 
         var h = hypergraph.mapVertices((vid, data) =>
@@ -86,8 +87,22 @@ object HyperPregel extends Logging {
         val k = sc.getConf.get("hyperx.debug.k").toInt
 
         var msg = h.mapReduceTuplesP(sc,
-            Array.fill(k)(sc.accumulator(0)), Array.fill(k)(sc.accumulator(0)), Array.fill(k)(sc.accumulator(0)), Array.fill(k)(sc.accumulator(0)),
-            hprog, mergeMsg)
+            Array.fill(k)(sc.accumulator(0)), Array.fill(k)(
+                sc.accumulator(0)), Array.fill(k)(sc.accumulator(0)),
+                Array.fill(k)(sc.accumulator(0)),
+                Array.fill(k)(sc.accumulator(0)),
+                Array.fill(k)(sc.accumulator(0)),
+                Array.fill(k)(sc.accumulator(0L)),
+                Array.fill(k)(sc.accumulator(0L)),
+                Array.fill(k)(sc.accumulator(0L)),
+                Array.fill(k)(sc.accumulator(0L)),
+                Array.fill(k)(sc.accumulator(0L)),
+                Array.fill(k)(sc.accumulator(0L)),
+                Array.fill(k)(sc.accumulator(0L)),
+                Array.fill(k)(sc.accumulator(0L)),
+                Array.fill(k)(sc.accumulator(0L)),
+                Array.fill(k)(sc.accumulator(0L)),
+                hprog, mergeMsg)
 
         var activeMsg = msg.count()
 
@@ -125,29 +140,49 @@ object HyperPregel extends Logging {
             val oldMsg = msg
             // Hyperedge computation
             // PARTITION: hyperedge degree balance
-            val mrStart = System.currentTimeMillis()
             val mT = Array.fill(k)(sc.accumulator(0))
             val cT = Array.fill(k)(sc.accumulator(0))
             val mcT = Array.fill(k)(sc.accumulator(0))
             val rT = Array.fill(k)(sc.accumulator(0))
-            logInfo("HYPERX DEBUGGING: MRT begins now...")
-            msg = h.mapReduceTuplesP(sc, mT, cT, mcT, rT, hprog, mergeMsg, Some((newVerts,
-                    activeDirection))).cache()
+            val sT = Array.fill(k)(sc.accumulator(0))
+            val zT = Array.fill(k)(sc.accumulator(0))
+            val sStart = Array.fill(k)(sc.accumulator(0L))
+            val zStart = Array.fill(k)(sc.accumulator(0L))
+            val mStart = Array.fill(k)(sc.accumulator(0L))
+            val cStart = Array.fill(k)(sc.accumulator(0L))
+            val rStart = Array.fill(k)(sc.accumulator(0L))
+            val sComplete = Array.fill(k)(sc.accumulator(0L))
+            val zComplete = Array.fill(k)(sc.accumulator(0L))
+            val mComplete = Array.fill(k)(sc.accumulator(0L))
+            val cComplete = Array.fill(k)(sc.accumulator(0L))
+            val rComplete = Array.fill(k)(sc.accumulator(0L))
+            val mrStart = System.currentTimeMillis()
+            msg = h.mapReduceTuplesP(sc, mT, cT, mcT, rT, sT, zT,
+                mStart, cStart, rStart, sStart, zStart,
+                mComplete, cComplete, rComplete, sComplete, zComplete,
+                hprog, mergeMsg, Some(x = (newVerts, activeDirection))).cache()
+            logInfo("HYPERX DEBUGGING: mrt 0 scan: completes %d".format(System.currentTimeMillis() - mrStart))
             activeMsg = msg.count()
-            logInfo("HYPERX DEBUGGING: MRT ends")
             val mVals = mT.map(_.value)
             val cVals = cT.map(_.value)
             val mcVals = mcT.map(_.value)
             val rVals = rT.map(_.value)
-            logInfo(("HYPERX DEBUGGING: S1 mapReduceTuple %d generating %d " +
-                    "messages inner %d outer %d mr %d (map %d %d combine %d %d mc %d %d reduce %d %d) / %d ms")
-                    .format(i, activeMsg,  inner, outer,
-                (System.currentTimeMillis() - mrStart).toInt,
-                        HyperUtils.avg(mVals).toInt, HyperUtils.dvt(mVals).toInt,
-                        HyperUtils.avg(cVals).toInt, HyperUtils.dvt(cVals).toInt,
-                        HyperUtils.avg(mcVals).toInt, HyperUtils.dvt(mcVals).toInt,
-                        HyperUtils.avg(rVals).toInt, HyperUtils.dvt(rVals).toInt,
-                (System.currentTimeMillis() - start).toInt))
+            val sVals = sT.map(_.value)
+            val zVals = zT.map(_.value)
+
+            logInfo("HYPERX DEBUGGING: %d generates %d messages in %d ms"
+                .format(i, activeMsg, (System.currentTimeMillis() - start).toInt))
+            logInfo("HYPERX DEBUGGING: inner %d outer %d mrt %d"
+                .format(inner, outer, (System.currentTimeMillis() - mrStart).toInt))
+            logInfo("HYPERX DEBUGGING: mrt 0 active set: starts %d completes %d"
+                    .format(- mrStart + sStart.map(_.value).min, - mrStart + sComplete.map(_.value).max))
+            logInfo("HYPERX DEBUGGING: mrt 0 active set details : ship avg %d min %d max %d std %d zip avg %d min %d max %d std %d"
+                    .format(HyperUtils.avg(sVals).toInt, sVals.min, sVals.max, HyperUtils.dvt(sVals).toInt,
+                        HyperUtils.avg(zVals).toInt, zVals.min, zVals.max, HyperUtils.dvt(zVals).toInt))
+            logInfo("HYPERX DEBUGGING: mrt 1 map-combine: starts %d completes %d avg %d min %d max %d std %d"
+                .format(- mrStart + cStart.map(_.value).min, - mrStart + cComplete.map(_.value).max, HyperUtils.avg(cVals).toInt, cVals.min, cVals.max, HyperUtils.dvt(cVals).toInt))
+            logInfo("HYPERX DEBUGGING: mrt 2 reduce: starts %d completes %d avg %d min %d max %d std %d"
+                .format(- mrStart + rStart.map(_.value).min, - mrStart + rComplete.map(_.value).max, HyperUtils.avg(rVals).toInt, rVals.min, rVals.max, HyperUtils.dvt(rVals).toInt))
 
             // unpersist old hypergraphs, vertices, and messages
             oldMsg.unpersist(blocking = false)

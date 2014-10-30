@@ -254,9 +254,10 @@ VertexPartitionBaseOpsConstructor]
 
     def aggregateUsingIndexP[VD2: ClassTag](
         iter: Iterator[Product2[VertexId, VD2]], reduceFunc: (VD2, VD2) => VD2,
-        tracker: Accumulator[Int])
+        tracker: Accumulator[Int], startTracker: Accumulator[Long], completeTracker: Accumulator[Long])
     : Self[VD2] = {
         val start = System.currentTimeMillis()
+        startTracker += start
         val newMask = new BitSet(self.capacity)
         val newValues = new Array[VD2](self.capacity)
         iter.foreach { product =>
@@ -275,6 +276,7 @@ VertexPartitionBaseOpsConstructor]
         }
         val ret = this.withValues(newValues).withMask(newMask)
         tracker += (System.currentTimeMillis() - start).toInt
+        completeTracker += System.currentTimeMillis()
         ret
     }
 

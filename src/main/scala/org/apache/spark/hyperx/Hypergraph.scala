@@ -288,6 +288,13 @@ Serializable {
     def mapReduceTuplesP[A: ClassTag](sc: SparkContext,
         mT: Array[Accumulator[Int]], cT: Array[Accumulator[Int]],
         mcT: Array[Accumulator[Int]], rT: Array[Accumulator[Int]],
+        sT: Array[Accumulator[Int]], zT: Array[Accumulator[Int]],
+        mStart: Array[Accumulator[Long]], cStart: Array[Accumulator[Long]],
+        rStart: Array[Accumulator[Long]],
+        sStart: Array[Accumulator[Long]], zStart: Array[Accumulator[Long]],
+        mCpl: Array[Accumulator[Long]], cCpl: Array[Accumulator[Long]],
+        rCpl: Array[Accumulator[Long]],
+        sCpl: Array[Accumulator[Long]], zCpl: Array[Accumulator[Long]],
         mapFunc: (HyperedgeTuple[VD,ED], Accumulator[Int]) => Iterator[(VertexId, A)],
         reduceFunc: (A, A) => A,
         activeSetOpt: Option[(VertexRDD[_],HyperedgeDirection)] = None)

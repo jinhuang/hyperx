@@ -2,7 +2,8 @@ package org.apache.spark.hyperx.impl
 
 import org.apache.spark.SparkContext._
 import org.apache.spark.hyperx._
-import org.apache.spark.hyperx.partition.{HeuristicPartition, PartitionStrategy, VertexPartitioner}
+import org.apache.spark.hyperx.partition.{HeuristicPartition,
+PartitionStrategy, VertexPartitioner}
 import org.apache.spark.hyperx.util.collection.HyperXOpenHashMap
 import org.apache.spark.hyperx.util.{BytecodeUtils, HyperUtils}
 import org.apache.spark.rdd._
@@ -85,7 +86,8 @@ class HypergraphImpl[VD: ClassTag, ED: ClassTag] protected(
         if (vdTag == vd2Tag) {
             vertices.cache()
             val newVerts = vertices.mapVertexPartitions(_.map(map)).cache()
-            val changedVerts = vertices.asInstanceOf[VertexRDD[VD2]].diff(newVerts)
+            val changedVerts = vertices.asInstanceOf[VertexRDD[VD2]]
+                    .diff(newVerts)
             val newReplicatedVertexView = replicatedVertexView
                     .asInstanceOf[ReplicatedVertexView[VD2, ED]]
                     .updateVertices(changedVerts)
@@ -178,52 +180,51 @@ class HypergraphImpl[VD: ClassTag, ED: ClassTag] protected(
         val activeDirectionOpt = activeSetOpt.map(_._2)
 
         val preAgg = view.hyperedges.partitionsRDD.mapPartitionsWithIndex{
-            (i,p) =>
-                p.flatMap {
-                    // choose whether to use index to iterate the tuples
-                    case (pid, hyperedgePartition) =>
-                        val activeFraction =
-                            hyperedgePartition.numActives.getOrElse(0) /
-                                    hyperedgePartition.indexSize.toFloat
+            (i,p) => p.flatMap {
+                // choose whether to use index to iterate the tuples
+                case (pid, hyperedgePartition) =>
+                    val activeFraction =
+                        hyperedgePartition.numActives.getOrElse(0) /
+                                hyperedgePartition.indexSize.toFloat
 
-                        val hyperedgeIter = activeDirectionOpt match {
-                            case Some(HyperedgeDirection.Both) =>
-                                if (activeFraction < 0.8) {
-                                    hyperedgePartition.indexIterator(srcVertexId =>
-                                        hyperedgePartition.isActive(srcVertexId))
-                                            .filter(h => hyperedgePartition.isActive
-                                            (h.dstIds))
-                                } else {
-                                    hyperedgePartition.iterator.filter(h =>
-                                        hyperedgePartition.isActive(h.srcIds) &&
-                                                hyperedgePartition.isActive(h.dstIds))
-                                }
-                            case Some(HyperedgeDirection.Either) =>
-                                // Scan all hyperedges and then do the filter.
+                    val hyperedgeIter = activeDirectionOpt match {
+                        case Some(HyperedgeDirection.Both) =>
+                            if (activeFraction < 0.8) {
+                                hyperedgePartition.indexIterator(srcVertexId =>
+                                    hyperedgePartition.isActive(srcVertexId))
+                                        .filter(h => hyperedgePartition
+                                            .isActive(h.dstIds))
+                            } else {
                                 hyperedgePartition.iterator.filter(h =>
-                                    hyperedgePartition.isActive(h.srcIds) ||
-                                            hyperedgePartition.isActive(h.dstIds))
-                            case Some(HyperedgeDirection.Out) =>
-                                if (activeFraction < 0.8) {
-                                    hyperedgePartition.indexIterator(srcVertexId =>
-                                        hyperedgePartition.isActive(srcVertexId))
-                                } else {
-                                    hyperedgePartition.iterator.filter(h =>
-                                        hyperedgePartition.isActive(h.srcIds))
-                                }
-                            case Some(HyperedgeDirection.In) =>
+                                    hyperedgePartition.isActive(h.srcIds) &&
+                                        hyperedgePartition.isActive(h.dstIds))
+                            }
+                        case Some(HyperedgeDirection.Either) =>
+                            // Scan all hyperedges and then do the filter.
+                            hyperedgePartition.iterator.filter(h =>
+                                hyperedgePartition.isActive(h.srcIds) ||
+                                        hyperedgePartition.isActive(h.dstIds))
+                        case Some(HyperedgeDirection.Out) =>
+                            if (activeFraction < 0.8) {
+                                hyperedgePartition.indexIterator(srcVertexId =>
+                                    hyperedgePartition.isActive(srcVertexId))
+                            } else {
                                 hyperedgePartition.iterator.filter(h =>
                                     hyperedgePartition.isActive(h.srcIds))
-                            case _ => hyperedgePartition.iterator
-                        }
+                            }
+                        case Some(HyperedgeDirection.In) =>
+                            hyperedgePartition.iterator.filter(h =>
+                                hyperedgePartition.isActive(h.srcIds))
+                        case _ => hyperedgePartition.iterator
+                    }
 
-                        // generate hyperedge tuple iterators
-                        // todo: to balance the hyperedge processing
-                        val mapOutputs = hyperedgePartition.upgradeIterator(
-                            hyperedgeIter, mapUsesSrcAttr, mapUsesDstAttr)
-                                .flatMap(mapFunc)
-                        hyperedgePartition.vertices.aggregateUsingIndex(mapOutputs,
-                            reduceFunc).iterator
+                    // generate hyperedge tuple iterators
+                    // todo: to balance the hyperedge processing
+                    val mapOutputs = hyperedgePartition.upgradeIterator(
+                        hyperedgeIter, mapUsesSrcAttr, mapUsesDstAttr)
+                            .flatMap(mapFunc)
+                    hyperedgePartition.vertices.aggregateUsingIndex(mapOutputs,
+                        reduceFunc).iterator
                 }
 
         }.setName("HypergraphImpl.mapReduceTuples - preAgg")
@@ -241,81 +242,94 @@ class HypergraphImpl[VD: ClassTag, ED: ClassTag] protected(
     override def mapReduceTuplesP[A: ClassTag](sc: SparkContext,
         mT: Array[Accumulator[Int]], cT: Array[Accumulator[Int]],
         mcT: Array[Accumulator[Int]], rT: Array[Accumulator[Int]],
-        mapFunc: (HyperedgeTuple[VD,ED], Accumulator[Int]) => Iterator[(VertexId, A)],
+        sT: Array[Accumulator[Int]], zT: Array[Accumulator[Int]],
+        mStart: Array[Accumulator[Long]], cStart: Array[Accumulator[Long]],
+        rStart: Array[Accumulator[Long]],
+        sStart: Array[Accumulator[Long]], zStart: Array[Accumulator[Long]],
+        mCpl: Array[Accumulator[Long]], cCpl: Array[Accumulator[Long]],
+        rCpl: Array[Accumulator[Long]],
+        sCpl: Array[Accumulator[Long]], zCpl: Array[Accumulator[Long]],
+        mapFunc: (HyperedgeTuple[VD,ED],
+            Accumulator[Int]) => Iterator[(VertexId, A)],
         reduceFunc: (A, A) => A,
         activeSetOpt: Option[(VertexRDD[_], HyperedgeDirection)] = None)
     : VertexRDD[A] = {
-        vertices.cache()
 
         // Check whether the vertex attributes need to be shipped
         val mapUsesSrcAttr = accessesVertexAttr(mapFunc, "srcAttr")
         val mapUsesDstAttr = accessesVertexAttr(mapFunc, "dstAttr")
 
         // ship attributes accordingly
-        replicatedVertexView.upgrade(vertices, mapUsesSrcAttr, mapUsesDstAttr)
+        replicatedVertexView.upgradeP(vertices, mapUsesSrcAttr, mapUsesDstAttr, sT, zT, sStart, zStart, sCpl, zCpl)
 
         val view = activeSetOpt match {
             case Some((activeSet, _)) =>
-                replicatedVertexView.withActiveSet(activeSet)
+                replicatedVertexView.withActiveSetP(activeSet, sStart, sCpl, sT, zT)
             case None =>
                 replicatedVertexView
         }
         val activeDirectionOpt = activeSetOpt.map(_._2)
 
-        val preAgg = view.hyperedges.partitionsRDD.mapPartitions{
+        val preAgg = view.hyperedges.partitionsRDD.mapPartitions({
             p => p.flatMap {
-                    case (pid, hyperedgePartition) =>
-                        val start = System.currentTimeMillis()
-                        logInfo("HYPERX DEBUGGING: select iterators begins...")
-                        val activeFraction =
-                            hyperedgePartition.numActives.getOrElse(0) /
-                                    hyperedgePartition.indexSize.toFloat
-                        val hyperedgeIter = activeDirectionOpt match {
-                            case Some(HyperedgeDirection.Both) =>
-                                if (activeFraction < 0.8) {
-                                    hyperedgePartition.indexIterator(srcVertexId =>
-                                        hyperedgePartition.isActive(srcVertexId))
-                                            .filter(h => hyperedgePartition.isActive
-                                            (h.dstIds))
-                                } else {
-                                    hyperedgePartition.iterator.filter(h =>
-                                        hyperedgePartition.isActive(h.srcIds) &&
-                                                hyperedgePartition.isActive(h.dstIds))
-                                }
-                            case Some(HyperedgeDirection.Either) =>
-                                // Scan all hyperedges and then do the filter.
+                case (pid, hyperedgePartition) =>
+                    val start = System.currentTimeMillis()
+                    zStart(pid) += start
+                    val activeFraction =
+                        hyperedgePartition.numActives.getOrElse(0) /
+                                hyperedgePartition.indexSize.toFloat
+                    val hyperedgeIter = activeDirectionOpt match {
+                        case Some(HyperedgeDirection.Both) =>
+                            if (activeFraction < 0.8) {
+                                hyperedgePartition.indexIterator(srcVertexId =>
+                                    hyperedgePartition.isActive(srcVertexId))
+                                        .filter(h => hyperedgePartition.isActive
+                                        (h.dstIds))
+                            } else {
                                 hyperedgePartition.iterator.filter(h =>
-                                    hyperedgePartition.isActive(h.srcIds) ||
-                                            hyperedgePartition.isActive(h.dstIds))
-                            case Some(HyperedgeDirection.Out) =>
-                                if (activeFraction < 0.8) {
-                                    hyperedgePartition.indexIterator(srcVertexId =>
-                                        hyperedgePartition.isActive(srcVertexId))
-                                } else {
-                                    hyperedgePartition.iterator.filter(h =>
-                                        hyperedgePartition.isActive(h.srcIds))
-                                }
-                            case Some(HyperedgeDirection.In) =>
+                                    hyperedgePartition.isActive(h.srcIds) &&
+                                         hyperedgePartition.isActive(h.dstIds))
+                            }
+                        case Some(HyperedgeDirection.Either) =>
+                            // Scan all hyperedges and then do the filter.
+                            hyperedgePartition.iterator.filter(h =>
+                                hyperedgePartition.isActive(h.srcIds) ||
+                                        hyperedgePartition.isActive(h.dstIds))
+                        case Some(HyperedgeDirection.Out) =>
+                            if (activeFraction < 0.8) {
+                                hyperedgePartition.indexIterator(srcVertexId =>
+                                    hyperedgePartition.isActive(srcVertexId))
+                            } else {
                                 hyperedgePartition.iterator.filter(h =>
                                     hyperedgePartition.isActive(h.srcIds))
-                            case _ => hyperedgePartition.iterator
-                        }
-                        logInfo("HYPERX DEBUGGING: select iterators ends.")
-                        logInfo("HYPERX DEBUGGING: map partition begins for " + pid)
-                        // generate hyperedge tuple iterators
-                        val mapIterator = hyperedgePartition.upgradeIterator(
-                            hyperedgeIter, mapUsesSrcAttr,mapUsesDstAttr)
-                        val mapOutputs = mapIterator.flatMap(h => mapFunc(h, mT(pid)))
-                        val ret = hyperedgePartition.vertices.aggregateUsingIndexP(mapOutputs,
-                            reduceFunc, cT(pid)).iterator
-                        logInfo("HYPERX DEBUGGING: map and combines partition ends for " + pid)
-                        mcT(pid) += (System.currentTimeMillis() - start).toInt
-                        ret
+                            }
+                        case Some(HyperedgeDirection.In) =>
+                            hyperedgePartition.iterator.filter(h =>
+                                hyperedgePartition.isActive(h.srcIds))
+                        case _ => hyperedgePartition.iterator
+                    }
+                    zCpl(pid) += System.currentTimeMillis()
+//                    logInfo("HYPERX DEBUGGING: map partition begins for " + pid)
+                    mStart(pid) += System.currentTimeMillis()
+                    // generate hyperedge tuple iterators
+                    val mapIterator = hyperedgePartition.upgradeIterator(
+                        hyperedgeIter, mapUsesSrcAttr,mapUsesDstAttr)
+                    val mapOutputs = mapIterator.flatMap(h =>
+                        mapFunc(h, mT(pid)))
+                    mCpl(pid) += System.currentTimeMillis()
+                    val ret = hyperedgePartition.vertices
+                            .aggregateUsingIndexP(mapOutputs,reduceFunc,
+                                cT(pid), cStart(pid), cCpl(pid)).iterator
+//                    logInfo("HYPERX DEBUGGING: map and combines partition " +
+//                            "ends for " + pid)
+                    mcT(pid) += (System.currentTimeMillis() - start).toInt
+                    ret
                 }
 
-        }.setName("HypergraphImpl.mapReduceTuples - preAgg")
+        }, preservesPartitioning = true)
+        .setName("HypergraphImpl.mapReduceTuples - preAgg")
 
-        vertices.aggregateUsingIndexP(preAgg, reduceFunc, rT)
+        vertices.aggregateUsingIndexP(preAgg, reduceFunc, rT, rStart, rCpl)
     }
 
     private def accessesVertexAttr(closure: AnyRef, attrName: String)
@@ -400,7 +414,7 @@ object HypergraphImpl {
      * `VertexRDD.withHyperedges` or an appropriate VertexRDD constructor.
      */
     def fromExistingRDDs[VD: ClassTag, ED: ClassTag]( vertices: VertexRDD[VD],
-                                                      hyperedges: HyperedgeRDD[ED, VD]): HypergraphImpl[VD, ED] = {
+        hyperedges: HyperedgeRDD[ED, VD]): HypergraphImpl[VD, ED] = {
         new HypergraphImpl(vertices, new ReplicatedVertexView(hyperedges))
     }
 
@@ -472,7 +486,8 @@ object HypergraphImpl {
         val collectedVertices = vertices.collectAsMap()
         val vertexMap = new HyperXOpenHashMap[VertexId, PartitionId]()
         collectedVertices.foreach(e => vertexMap.update(e._1, e._2))
-        val partitioner: Partitioner = new VertexPartitioner(numParts, vertexMap)
+        val partitioner: Partitioner =
+            new VertexPartitioner(numParts, vertexMap)
         val localVertices = vertices.map(v =>
             Tuple2(v._2, (v._1, null.asInstanceOf[VD])))
                 .partitionBy(new HashPartitioner(numParts))
@@ -502,8 +517,8 @@ object HypergraphImpl {
     /** Create a hypergraph from vertices and hyperedges,
       * setting missing vertices to `defaultVertexAttr`. */
     def apply[VD: ClassTag, ED: ClassTag](vertices: RDD[(VertexId, VD)],
-                                          hyperedges: RDD[Hyperedge[ED]], defaultVertexAttr: VD,
-                                          hyperedgeStorageLevel: StorageLevel, vertexStorageLevel: StorageLevel)
+        hyperedges: RDD[Hyperedge[ED]], defaultVertexAttr: VD,
+        hyperedgeStorageLevel: StorageLevel, vertexStorageLevel: StorageLevel)
     : HypergraphImpl[VD, ED] = {
         val hyperedgeRDD = HyperedgeRDD.fromHyperedges(hyperedges)(
             classTag[ED], classTag[VD])

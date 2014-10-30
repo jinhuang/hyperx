@@ -7,6 +7,7 @@ import org.apache.spark.hyperx.util.collection.HyperXOpenHashMap
 import scala.collection.mutable
 
 abstract class HeuristicPartition extends PartitionStrategy {
+
     private[partition] var k = 0
     var numPartitions = k
 
@@ -20,7 +21,8 @@ abstract class HeuristicPartition extends PartitionStrategy {
     private[partition] var degrees: Array[Int] = null
     private[partition] var replicas: Array[Int] = null
     private[partition] var locals:Array[mutable.HashSet[VertexId]] = null
-    private[partition] var demands: Array[mutable.OpenHashMap[VertexId, Int]] = null
+    private[partition] var demands: Array[mutable.OpenHashMap[VertexId, Int]]
+        = null
 
     private[partition] def materialize() = {
         locals = localVertices()
@@ -85,7 +87,8 @@ abstract class HeuristicPartition extends PartitionStrategy {
         demands(p).contains(v) && demands(p)(v) > 0
     }
 
-    private[partition] def addVertexToDemand(p: PartitionId, v: VertexId): Unit = {
+    private[partition] def addVertexToDemand(p: PartitionId, v: VertexId)
+    : Unit = {
         if (demands(p).contains(v)) {
             demands(p).update(v, demands(p)(v) + 1)
         }
@@ -94,7 +97,8 @@ abstract class HeuristicPartition extends PartitionStrategy {
         }
     }
 
-    private[partition] def removeVertexFromDemand(p: PartitionId, v: VertexId): Unit = {
+    private[partition] def removeVertexFromDemand(p: PartitionId, v: VertexId)
+    :Unit = {
         if (demands(p).contains(v)) {
             if (demands(p)(v) > 0) demands(p).update(v, demands(p)(v) - 1)
             if (demands(p)(v) == 0) demands(p).remove(v)
@@ -105,7 +109,8 @@ abstract class HeuristicPartition extends PartitionStrategy {
         hyperedges.iterator
     }
 
-    private[hyperx] def getHyperedges(part: PartitionId): Iterator[(String, PartitionId)] = {
+    private[hyperx] def getHyperedges(part: PartitionId)
+    : Iterator[(String, PartitionId)] = {
         hyperedges.iterator.filter(_._2 == part)
     }
 
@@ -125,7 +130,8 @@ abstract class HeuristicPartition extends PartitionStrategy {
         k = k_
     }
 
-    private[hyperx] def setObjectiveParams(h: Double, v: Double, d: Double, norm_ : Int) = {
+    private[hyperx] def setObjectiveParams(h: Double, v: Double, d: Double,
+        norm_ : Int) = {
         costHyperedge = h
         costReplica = v
         costDemand = d
@@ -142,18 +148,13 @@ abstract class HeuristicPartition extends PartitionStrategy {
                 hyperedges.size, vertices.size))
         logInfo("HYPERX PARTITION: numReplicas " + replicas.sum +
                 " numDemands " + demands.map(_.size).sum +
-//                " stdReplicas " + dvt(replicas) +
                 " stdDegrees " + dvt(degrees) +
-//                " replicas " + (0 until k).map{i => i + ": " + replicas(i)}.reduce(_ + " " + _ ) +
                 " stdDemands " + dvt(demands.map(_.size)) +
-//                " demands " + (0 until k).map{i => i + ": " + demands(i).size}.reduce(_ + " " + _ )
                 " stdLocals " + dvt(locals.map(p => p.size))
         )
     }
 
     private[hyperx] def clear() = {
-        // clear everything except the vertices (which are used as the
-        // partitioner later)
         hyperedges.clear()
         degrees = null
         replicas = null
@@ -165,3 +166,5 @@ abstract class HeuristicPartition extends PartitionStrategy {
 
     private[partition] val unassignedPid = -1
 }
+
+

@@ -184,12 +184,8 @@ class VertexRDD[@specialized VD: ClassTag](
                 this.withPartitionsRDD[VD3](
                     partitionsRDD.zipPartitions(
                         other.copartitionWithVertices(this.partitioner.get),
-                        preservesPartitioning = true) {
-                        (partIter, msgs) =>
-                            val start = System.currentTimeMillis()
-                            val ret = partIter.map(_.leftJoin(msgs)(f))
-                            ret
-                    }
+                        preservesPartitioning = true)(f = (partIter, msgs) =>
+                        partIter.map(_.leftJoin(msgs)(f)))
                 )
         }
     }
@@ -243,29 +239,17 @@ class VertexRDD[@specialized VD: ClassTag](
      */
     def innerJoin[U: ClassTag, VD2: ClassTag](other: RDD[(VertexId, U)])
         (f: (VertexId, VD, U) => VD2):VertexRDD[VD2] = {
-        // Test if the other vertex is a VertexRDD to choose the optimal join
-        // strategy.
-        // If the other set is a VertexRDD then we use the much more
-        // efficient innerZipJoin
-        val start = System.currentTimeMillis()
         other match {
             case other: VertexRDD[U] =>
-                val ret = innerZipJoin[U, VD2](other)(f)
-                logDebug("HYPERX DEBUGGING: S0.0 innerJoin.innerZipJoin in %d ms".format(System.currentTimeMillis() - start))
-                ret
+                innerZipJoin[U, VD2](other)(f)
             case _ =>
                 this.withPartitionsRDD {
-                    val ret = partitionsRDD.zipPartitions(
+                    partitionsRDD.zipPartitions(
                         other.copartitionWithVertices(this.partitioner.get),
                         preservesPartitioning = true) {
                         (partIter, msgs) =>
-                            val eachStart = System.currentTimeMillis()
-                            val ret = partIter.map(_.innerJoin(msgs)(f))
-                            logDebug("HYPERX DEBUGGING: S0.0.p innerJoin.zipPartition.eachPartition in %d ms".format(System.currentTimeMillis() - eachStart))
-                            ret
+                            partIter.map(_.innerJoin(msgs)(f))
                     }
-                    logDebug("HYPERX DEBUGGING: S0.0 innerJoin.zipPartition in %d ms".format(System.currentTimeMillis() - start))
-                    ret
                 }
         }
     }
@@ -281,12 +265,9 @@ class VertexRDD[@specialized VD: ClassTag](
         val newPartitionsRDD = partitionsRDD.zipPartitions(
             other.partitionsRDD, preservesPartitioning = true
         ) { (thisIter, otherIter) =>
-            val start = System.currentTimeMillis()
             val thisPart = thisIter.next()
             val otherPart = otherIter.next()
-            val ret = Iterator(thisPart.innerJoin(otherPart)(f))
-            logDebug("HYPERX DEBUGGING: S0.0.p innerZipJoin in %d ms".format(System.currentTimeMillis() - start))
-            ret
+            Iterator(thisPart.innerJoin(otherPart)(f))
         }
         this.withPartitionsRDD(newPartitionsRDD)
     }
@@ -322,7 +303,7 @@ class VertexRDD[@specialized VD: ClassTag](
     }
 
     def aggregateUsingIndexP[VD2: ClassTag](messages: RDD[(VertexId,VD2)],
-        reduceFunc: (VD2,VD2) => VD2, rT: Array[Accumulator[Int]])
+        reduceFunc: (VD2,VD2) => VD2, rT: Array[Accumulator[Int]], rStart: Array[Accumulator[Long]], rCpl: Array[Accumulator[Long]])
     : VertexRDD[VD2] = {
         // shuffle messages to their destinations
         val shuffled = messages.copartitionWithVertices(this.partitioner.get)
@@ -331,10 +312,12 @@ class VertexRDD[@specialized VD: ClassTag](
             preservesPartitioning = true) { (thisIter, msgIter) =>
             thisIter.map{p =>
                 val start = System.currentTimeMillis()
-                logInfo("HYPERX DEBUGGING: reduce partition begins for " + p._2)
+                rStart(p._2.toInt) += start
+//                logInfo("HYPERX DEBUGGING: reduce partition begins for " + p._2)
                 val ret = p._1.aggregateUsingIndex(msgIter, reduceFunc)
                 rT(p._2.toInt) += (System.currentTimeMillis() - start).toInt
-                logInfo("HYPERX DEBUGGING: reduce partition ends for " + p._2)
+//                logInfo("HYPERX DEBUGGING: reduce partition ends for " + p._2)
+                rCpl(p._2.toInt) += System.currentTimeMillis()
                 ret
             }
         }
@@ -414,11 +397,23 @@ class VertexRDD[@specialized VD: ClassTag](
     : RDD[(PartitionId, VertexAttributeBlock[VD])] = {
         partitionsRDD.mapPartitionsWithIndex((i, part) =>
             part.flatMap{p =>
-            logInfo("HYPERX DEBUGGING: ship vertex begins...")
             val ret = p.shipVertexAttributes(shipSrc,shipDst)
-            logInfo("HYPERX DEBUGGING: ship vertex ends")
             ret
         }, preservesPartitioning = true)
+    }
+
+    private[hyperx] def shipVertexAttributesP(shipSrc: Boolean,shipDst: Boolean,
+        t: Array[Accumulator[Int]], tStart: Array[Accumulator[Long]], tCpl: Array[Accumulator[Long]])
+    : RDD[(PartitionId, VertexAttributeBlock[VD])] = {
+        partitionsRDD.mapPartitionsWithIndex((i, part) =>
+            part.flatMap{p =>
+                val start = System.currentTimeMillis()
+                tStart(i) += start
+                val ret = p.shipVertexAttributes(shipSrc,shipDst)
+                t(i) += (System.currentTimeMillis() - start).toInt
+                tCpl(i) += System.currentTimeMillis()
+                ret
+            }, preservesPartitioning = true)
     }
 
     /** Generates an RDD of vertex IDs suitable for shipping to the hyperedge
@@ -427,6 +422,16 @@ class VertexRDD[@specialized VD: ClassTag](
         val activeMsgRDD = partitionsRDD.mapPartitions(
             _.flatMap(_.shipVertexIds()), preservesPartitioning = true)
         activeMsgRDD
+    }
+
+    private[hyperx] def shipVertexIdsP(sT: Array[Accumulator[Long]], t: Array[Accumulator[Int]]): RDD[(PartitionId, Array[VertexId])] = {
+        partitionsRDD.mapPartitionsWithIndex({(i,p) =>
+            val start = System.currentTimeMillis()
+            sT(i) += System.currentTimeMillis()
+            val ret = p.flatMap(_.shipVertexIds())
+            t(i) += (System.currentTimeMillis() - start).toInt
+            ret
+        }, preservesPartitioning = true)
     }
 
 }
@@ -548,9 +553,9 @@ object VertexRDD {
 
     private def createRoutingTables(hyperedges: HyperedgeRDD[_, _],
         vertexPartitioner: Partitioner): RDD[RoutingTablePartition] = {
-        // Determine which vertices each edge partition needs by creating a mapping from vid to pid
         val vid2pid = hyperedges.partitionsRDD.mapPartitions(_.flatMap(
-            Function.tupled(RoutingTablePartition.hyperedgePartitionToMsgs(_, _))))
+            Function.tupled(
+                RoutingTablePartition.hyperedgePartitionToMsgs(_, _))))
                 .setName("VertexRDD.createRoutingTables - vid2pid (aggregation)")
 
         val numHyperedgePartitions = hyperedges.partitions.size
@@ -562,25 +567,16 @@ object VertexRDD {
 
     }
 
-    /**
-     * Construct a `VertexRDD` containing all vertices referred to in
-     * `hyperedges`. The vertices
-     * will be created with the attribute `defaultVal`. The resulting
-     * `VertexRDD` will be joinable
-     * with `hyperedges`.
-     * @param hyperedges the [[HyperedgeRDD]] referring to the vertices to create
-     * @param numPartitions the desired number of partitions for the resulting `VertexRDD`
-     * @param defaultVal the vertex attribute to use when creating missing vertices
-     * @tparam VD the vertex attribute type
-     * @return a new `VertexRDD`
-     */
     def fromHyperedges[VD: ClassTag](hyperedges: HyperedgeRDD[_, _],
         numPartitions: Int, defaultVal: VD): VertexRDD[VD] = {
-        val routingTables = createRoutingTables(hyperedges, new HashPartitioner(numPartitions))
+        val routingTables = createRoutingTables(hyperedges,
+            new HashPartitioner(numPartitions))
         val vertexPartitions = routingTables.mapPartitions({ routingTableIter =>
             val routingTable =
-                if (routingTableIter.hasNext) routingTableIter.next() else RoutingTablePartition.empty
-            Iterator(ShippableVertexPartition(Iterator.empty, routingTable, defaultVal))
+                if (routingTableIter.hasNext) routingTableIter.next()
+                else RoutingTablePartition.empty
+            Iterator(ShippableVertexPartition(Iterator.empty,
+                routingTable, defaultVal))
         }, preservesPartitioning = true)
         new VertexRDD(vertexPartitions)
     }
