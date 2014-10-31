@@ -1,7 +1,7 @@
 package org.apache.spark.hyperx
 
 import org.apache.spark.hyperx.impl.{HyperedgePartition, HypergraphImpl, ShippableVertexPartition}
-import org.apache.spark.hyperx.partition.{HeuristicPartition, RandomPartition}
+import org.apache.spark.hyperx.partition.{PlainPartition, PartitionStrategy}
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.{Logging, SparkContext}
 
@@ -22,7 +22,7 @@ object HypergraphLoader extends Logging {
     def hyperedgeListFile(
          sc: SparkContext, path: String, separator: String,
          weighted: Boolean = false, part: PartitionId,
-         strategy: HeuristicPartition = new RandomPartition(),
+         strategy: PartitionStrategy = new PlainPartition(),
          hyperedgeStorageLevel: StorageLevel = StorageLevel.MEMORY_ONLY,
          vertexStorageLevel: StorageLevel = StorageLevel.MEMORY_ONLY)
     : Hypergraph[Int, Int] = {

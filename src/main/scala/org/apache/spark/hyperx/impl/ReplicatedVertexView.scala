@@ -99,7 +99,8 @@ class ReplicatedVertexView[VD: ClassTag, ED: ClassTag](
     def upgradeP(vertices: VertexRDD[VD], includeSrc: Boolean,
                 includeDst: Boolean, sT: Array[Accumulator[Int]],
                 zT: Array[Accumulator[Int]], sStart: Array[Accumulator[Long]],
-                zStart: Array[Accumulator[Long]], sCpl: Array[Accumulator[Long]], zCpl: Array[Accumulator[Long]])
+                zStart: Array[Accumulator[Long]], sCpl: Array[Accumulator[Long]], zCpl: Array[Accumulator[Long]],
+                mrStart: Long)
     : Unit = {
         val shipSrc = includeSrc && !hasSrcIds
         val shipDst = includeDst && !hasDstIds

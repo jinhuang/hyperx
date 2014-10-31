@@ -33,12 +33,8 @@ class HypergraphKryoRegistrator extends KryoRegistrator {
         kryo.register(classOf[Hyperedge[Object]])
         kryo.register(classOf[HyperedgeDirection])
         kryo.register(classOf[ReplicatedVertexView[Object, Object]])
-        kryo.register(classOf[HeuristicPartition])
         kryo.register(classOf[PlainPartition])
-        kryo.register(classOf[SearchPartition])
-        kryo.register(classOf[RandomPartition])
-//        kryo.register(classOf[OnePassParallelPartition])
-//        kryo.register(classOf[AlternateParallelPartition])
-//        kryo.register(classOf[LocalParallelPartition])
+        kryo.register(classOf[GreedyPartition])
+
     }
 }

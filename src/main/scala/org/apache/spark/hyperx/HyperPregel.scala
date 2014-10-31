@@ -102,6 +102,7 @@ object HyperPregel extends Logging {
                 Array.fill(k)(sc.accumulator(0L)),
                 Array.fill(k)(sc.accumulator(0L)),
                 Array.fill(k)(sc.accumulator(0L)),
+                0L,
                 hprog, mergeMsg)
 
         var activeMsg = msg.count()
@@ -120,7 +121,6 @@ object HyperPregel extends Logging {
             val newVerts = h.vertices.innerJoin(msg)(vprog).cache()
             prevH = h
             newVerts.count()
-            newVerts.cache()
             val inner = System.currentTimeMillis() - innerStart
 
             // Update the vertex attribute values
@@ -157,11 +157,12 @@ object HyperPregel extends Logging {
             val cComplete = Array.fill(k)(sc.accumulator(0L))
             val rComplete = Array.fill(k)(sc.accumulator(0L))
             val mrStart = System.currentTimeMillis()
+            logInfo("HYPERX DEBUGGING: mrt starts" )
             msg = h.mapReduceTuplesP(sc, mT, cT, mcT, rT, sT, zT,
                 mStart, cStart, rStart, sStart, zStart,
-                mComplete, cComplete, rComplete, sComplete, zComplete,
+                mComplete, cComplete, rComplete, sComplete, zComplete, mrStart,
                 hprog, mergeMsg, Some(x = (newVerts, activeDirection))).cache()
-            logInfo("HYPERX DEBUGGING: mrt 0 scan: completes %d".format(System.currentTimeMillis() - mrStart))
+            val scanTime = System.currentTimeMillis() - mrStart
             activeMsg = msg.count()
             val mVals = mT.map(_.value)
             val cVals = cT.map(_.value)
@@ -174,15 +175,17 @@ object HyperPregel extends Logging {
                 .format(i, activeMsg, (System.currentTimeMillis() - start).toInt))
             logInfo("HYPERX DEBUGGING: inner %d outer %d mrt %d"
                 .format(inner, outer, (System.currentTimeMillis() - mrStart).toInt))
-            logInfo("HYPERX DEBUGGING: mrt 0 active set: starts %d completes %d"
-                    .format(- mrStart + sStart.map(_.value).min, - mrStart + sComplete.map(_.value).max))
-            logInfo("HYPERX DEBUGGING: mrt 0 active set details : ship avg %d min %d max %d std %d zip avg %d min %d max %d std %d"
+            logInfo("HYPERX DEBUGGING: scan: %d scheduling and shipping tasks: %d".format(scanTime, - mrStart + sStart.map(_.value).min - scanTime))
+//            logInfo("HYPERX DEBUGGING: mrt 1 active set: starts %d completes %d"
+//                    .format(- mrStart + sStart.map(_.value).min, - mrStart + sComplete.map(_.value).max))
+            logInfo("HYPERX DEBUGGING: active set (pipeline): %d".format(sComplete.map(_.value).max - sStart.map(_.value).min))
+            logInfo("HYPERX DEBUGGING: active set details : ship avg %d min %d max %d std %d zip avg %d min %d max %d std %d"
                     .format(HyperUtils.avg(sVals).toInt, sVals.min, sVals.max, HyperUtils.dvt(sVals).toInt,
                         HyperUtils.avg(zVals).toInt, zVals.min, zVals.max, HyperUtils.dvt(zVals).toInt))
-            logInfo("HYPERX DEBUGGING: mrt 1 map-combine: starts %d completes %d avg %d min %d max %d std %d"
-                .format(- mrStart + cStart.map(_.value).min, - mrStart + cComplete.map(_.value).max, HyperUtils.avg(cVals).toInt, cVals.min, cVals.max, HyperUtils.dvt(cVals).toInt))
-            logInfo("HYPERX DEBUGGING: mrt 2 reduce: starts %d completes %d avg %d min %d max %d std %d"
-                .format(- mrStart + rStart.map(_.value).min, - mrStart + rComplete.map(_.value).max, HyperUtils.avg(rVals).toInt, rVals.min, rVals.max, HyperUtils.dvt(rVals).toInt))
+            logInfo("HYPERX DEBUGGING: map-combine (pipeline): %d starts %d completes %d avg %d min %d max %d std %d"
+                .format(cComplete.map(_.value).max - cStart.map(_.value).min, - mrStart + cStart.map(_.value).min, - mrStart + cComplete.map(_.value).max, HyperUtils.avg(cVals).toInt, cVals.min, cVals.max, HyperUtils.dvt(cVals).toInt))
+            logInfo("HYPERX DEBUGGING: reduce (pipeline): %d starts %d completes %d avg %d min %d max %d std %d"
+                .format(rComplete.map(_.value).max - rStart.map(_.value).min, - mrStart + rStart.map(_.value).min, - mrStart + rComplete.map(_.value).max, HyperUtils.avg(rVals).toInt, rVals.min, rVals.max, HyperUtils.dvt(rVals).toInt))
 
             // unpersist old hypergraphs, vertices, and messages
             oldMsg.unpersist(blocking = false)

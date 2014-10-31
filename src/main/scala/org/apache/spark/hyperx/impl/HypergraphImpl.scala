@@ -1,14 +1,13 @@
 package org.apache.spark.hyperx.impl
 
 import org.apache.spark.SparkContext._
+import org.apache.spark._
 import org.apache.spark.hyperx._
-import org.apache.spark.hyperx.partition.{HeuristicPartition,
-PartitionStrategy, VertexPartitioner}
+import org.apache.spark.hyperx.partition.{PartitionStrategy, VertexPartitioner}
 import org.apache.spark.hyperx.util.collection.HyperXOpenHashMap
 import org.apache.spark.hyperx.util.{BytecodeUtils, HyperUtils}
 import org.apache.spark.rdd._
 import org.apache.spark.storage.StorageLevel
-import org.apache.spark._
 
 import scala.reflect.{ClassTag, classTag}
 import scala.util.Random
@@ -249,6 +248,7 @@ class HypergraphImpl[VD: ClassTag, ED: ClassTag] protected(
         mCpl: Array[Accumulator[Long]], cCpl: Array[Accumulator[Long]],
         rCpl: Array[Accumulator[Long]],
         sCpl: Array[Accumulator[Long]], zCpl: Array[Accumulator[Long]],
+        mrStart: Long,
         mapFunc: (HyperedgeTuple[VD,ED],
             Accumulator[Int]) => Iterator[(VertexId, A)],
         reduceFunc: (A, A) => A,
@@ -260,7 +260,7 @@ class HypergraphImpl[VD: ClassTag, ED: ClassTag] protected(
         val mapUsesDstAttr = accessesVertexAttr(mapFunc, "dstAttr")
 
         // ship attributes accordingly
-        replicatedVertexView.upgradeP(vertices, mapUsesSrcAttr, mapUsesDstAttr, sT, zT, sStart, zStart, sCpl, zCpl)
+        replicatedVertexView.upgradeP(vertices, mapUsesSrcAttr, mapUsesDstAttr, sT, zT, sStart, zStart, sCpl, zCpl, mrStart)
 
         val view = activeSetOpt match {
             case Some((activeSet, _)) =>
@@ -274,7 +274,7 @@ class HypergraphImpl[VD: ClassTag, ED: ClassTag] protected(
             p => p.flatMap {
                 case (pid, hyperedgePartition) =>
                     val start = System.currentTimeMillis()
-                    zStart(pid) += start
+//                    zStart(pid) += start
                     val activeFraction =
                         hyperedgePartition.numActives.getOrElse(0) /
                                 hyperedgePartition.indexSize.toFloat
@@ -308,8 +308,7 @@ class HypergraphImpl[VD: ClassTag, ED: ClassTag] protected(
                                 hyperedgePartition.isActive(h.srcIds))
                         case _ => hyperedgePartition.iterator
                     }
-                    zCpl(pid) += System.currentTimeMillis()
-//                    logInfo("HYPERX DEBUGGING: map partition begins for " + pid)
+//                    zCpl(pid) += System.currentTimeMillis()
                     mStart(pid) += System.currentTimeMillis()
                     // generate hyperedge tuple iterators
                     val mapIterator = hyperedgePartition.upgradeIterator(
@@ -320,8 +319,6 @@ class HypergraphImpl[VD: ClassTag, ED: ClassTag] protected(
                     val ret = hyperedgePartition.vertices
                             .aggregateUsingIndexP(mapOutputs,reduceFunc,
                                 cT(pid), cStart(pid), cCpl(pid)).iterator
-//                    logInfo("HYPERX DEBUGGING: map and combines partition " +
-//                            "ends for " + pid)
                     mcT(pid) += (System.currentTimeMillis() - start).toInt
                     ret
                 }
@@ -432,7 +429,7 @@ object HypergraphImpl {
     }
 
     def fromHyperedgeList[VD: ClassTag, ED: ClassTag](input: RDD[String],
-        numParts: Int, strategy: HeuristicPartition,
+        numParts: Int, strategy: PartitionStrategy,
         vertexLevel: StorageLevel = StorageLevel.MEMORY_ONLY,
         hyperedgeLevel: StorageLevel = StorageLevel.MEMORY_ONLY) = {
 
@@ -442,7 +439,6 @@ object HypergraphImpl {
         }.partitionBy(new HashPartitioner(numParts))
                 .flatMap(p => Iterator(p._2))
         val vertexPartitioner: Partitioner = strategy.getPartitioner
-        strategy.clear()
 
         val hyperedges: RDD[(Int, HyperedgePartition[ED, VD])] =
             rdds._2.partitionBy(new HashPartitioner(numParts))
@@ -461,7 +457,6 @@ object HypergraphImpl {
 
         val vertexRDD = VertexRDD[VD](localVertices, hyperedgesRDD,
             null.asInstanceOf[VD], vertexPartitioner, vertexLevel)
-
         new HypergraphImpl(vertexRDD, new ReplicatedVertexView(hyperedgesRDD))
     }
 
@@ -510,7 +505,6 @@ object HypergraphImpl {
 
         val vertexRDD = VertexRDD[VD](localVertices, hyperedgesRDD,
             null.asInstanceOf[VD], partitioner, vertexLevel)
-
         new HypergraphImpl(vertexRDD, new ReplicatedVertexView(hyperedgesRDD))
     }
 

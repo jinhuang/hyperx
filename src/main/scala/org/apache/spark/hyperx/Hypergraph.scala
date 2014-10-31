@@ -295,6 +295,7 @@ Serializable {
         mCpl: Array[Accumulator[Long]], cCpl: Array[Accumulator[Long]],
         rCpl: Array[Accumulator[Long]],
         sCpl: Array[Accumulator[Long]], zCpl: Array[Accumulator[Long]],
+        mrStart: Long,
         mapFunc: (HyperedgeTuple[VD,ED], Accumulator[Int]) => Iterator[(VertexId, A)],
         reduceFunc: (A, A) => A,
         activeSetOpt: Option[(VertexRDD[_],HyperedgeDirection)] = None)

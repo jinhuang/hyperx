@@ -44,10 +44,10 @@ object Analytics extends Logging {
         }
         val options = mutable.Map(optionsList: _*)
 
-        def pickPartitioner(v: String): HeuristicPartition = {
+        def pickPartitioner(v: String): PartitionStrategy = {
             v match {
                 case "Plain" => new PlainPartition
-                case "Random" => new RandomPartition
+                case "Greedy" => new GreedyPartition
                 case _ => throw new IllegalArgumentException("Invalid " +
                         "PartitionStrategy: " + v)
             }
@@ -78,7 +78,7 @@ object Analytics extends Logging {
         val outputPath = options.remove("outputPath").getOrElse(test_path)
 
         val partitionStrategy = options.remove("partStrategy")
-                .map(pickPartitioner).getOrElse(new RandomPartition)
+                .map(pickPartitioner).getOrElse(new PlainPartition)
         val hyperedgeStorageLevel = options.remove("hyperedgeLevel")
                 .map(StorageLevel.fromString).getOrElse(StorageLevel
                 .MEMORY_ONLY)
@@ -254,7 +254,7 @@ object Analytics extends Logging {
 
     private def loadHypergraph(sc: SparkContext, fname: String, vfname: String,
         fieldSeparator: String, weighted: Boolean, numPart: Int,
-        inputMode: String, partitionStrategy: HeuristicPartition,
+        inputMode: String, partitionStrategy: PartitionStrategy,
         hyperedgeLevel: StorageLevel = StorageLevel.MEMORY_ONLY,
         vertexLevel: StorageLevel = StorageLevel.MEMORY_ONLY)
     : Hypergraph[Int, Int] = {

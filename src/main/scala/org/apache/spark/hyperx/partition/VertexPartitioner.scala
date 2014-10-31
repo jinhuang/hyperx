@@ -19,3 +19,11 @@ class VertexPartitioner (val k: Int, val map: HyperXOpenHashMap[VertexId, Partit
         }
     }
 }
+
+object VertexPartitioner {
+    def apply(k: Int, map: Iterator[(VertexId, PartitionId)]) = {
+        val partitioner = new VertexPartitioner(k, new HyperXOpenHashMap[VertexId, PartitionId]())
+        map.foreach{v => partitioner.map.update(v._1, v._2)}
+        partitioner
+    }
+}
