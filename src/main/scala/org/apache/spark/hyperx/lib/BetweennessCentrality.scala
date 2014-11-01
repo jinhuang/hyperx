@@ -26,7 +26,9 @@ object BetweennessCentrality extends Logging {
 
     def run[VD: ClassTag, ED: ClassTag] (hypergraph: Hypergraph[VD, ED])
     : RDD[(VertexId, Double)] = {
-        val num = 56
+
+        // val num = 56
+        val num = 28
         run(hypergraph, hypergraph.pickRandomVertices(num.toInt).toSeq)
     }
 

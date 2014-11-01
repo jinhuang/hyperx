@@ -286,17 +286,20 @@ Serializable {
     : VertexRDD[A]
 
     def mapReduceTuplesP[A: ClassTag](sc: SparkContext,
-        mT: Array[Accumulator[Int]], cT: Array[Accumulator[Int]],
+        msT: Array[Accumulator[Int]], mdT: Array[Accumulator[Int]],
+        msdT: Array[Accumulator[Int]], mddT: Array[Accumulator[Int]],
+        cT: Array[Accumulator[Int]],
         mcT: Array[Accumulator[Int]], rT: Array[Accumulator[Int]],
         sT: Array[Accumulator[Int]], zT: Array[Accumulator[Int]],
         mStart: Array[Accumulator[Long]], cStart: Array[Accumulator[Long]],
         rStart: Array[Accumulator[Long]],
         sStart: Array[Accumulator[Long]], zStart: Array[Accumulator[Long]],
         mCpl: Array[Accumulator[Long]], cCpl: Array[Accumulator[Long]],
-        rCpl: Array[Accumulator[Long]],
+        rCpl: Array[Accumulator[Long]], rCount: Array[Accumulator[Int]],
+        cCount: Array[Accumulator[Int]],
         sCpl: Array[Accumulator[Long]], zCpl: Array[Accumulator[Long]],
         mrStart: Long,
-        mapFunc: (HyperedgeTuple[VD,ED], Accumulator[Int]) => Iterator[(VertexId, A)],
+        mapFunc: (HyperedgeTuple[VD,ED], Accumulator[Int], Accumulator[Int], Accumulator[Int], Accumulator[Int]) => Iterator[(VertexId, A)],
         reduceFunc: (A, A) => A,
         activeSetOpt: Option[(VertexRDD[_],HyperedgeDirection)] = None)
     : VertexRDD[A]

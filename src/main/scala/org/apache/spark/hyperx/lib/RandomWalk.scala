@@ -50,16 +50,20 @@ object RandomWalk extends Logging {
         def vertexProg(id: VertexId, attr: Double, msgSum: Double): Double =
             resetProb + (1.0 - resetProb) * msgSum
 
-        def hyperedgeProg(hyperedge: HyperedgeTuple[Double,HyperAttr[Double]]
-                          , acc: Accumulator[Int])
+        def hyperedgeProg(hyperedge: HyperedgeTuple[Double,HyperAttr[Double]],
+            srcAcc: Accumulator[Int], dstAcc: Accumulator[Int],
+            srcDAcc: Accumulator[Int], dstDAcc: Accumulator[Int])
         = {
             var start = System.currentTimeMillis()
             val dstSize = hyperedge.dstAttr.size
             val msgVal = hyperedge.srcAttr.map(attr =>
                 attr._2 * hyperedge.attr(attr._1)).sum * 1.0 / dstSize
+            srcAcc += (System.currentTimeMillis() - start).toInt
             start = System.currentTimeMillis()
             val ret = hyperedge.dstAttr.map(attr => (attr._1, msgVal)).toIterator
-            acc += (System.currentTimeMillis() - start).toInt
+            dstAcc += (System.currentTimeMillis() - start).toInt
+            srcDAcc += hyperedge.srcAttr.size
+            dstDAcc += hyperedge.dstAttr.size
             ret
         }
 

@@ -239,17 +239,20 @@ class HypergraphImpl[VD: ClassTag, ED: ClassTag] protected(
    *  reduce phase => rT
    */
     override def mapReduceTuplesP[A: ClassTag](sc: SparkContext,
-        mT: Array[Accumulator[Int]], cT: Array[Accumulator[Int]],
+        msT: Array[Accumulator[Int]], mdT: Array[Accumulator[Int]],
+        msdT: Array[Accumulator[Int]], mddT: Array[Accumulator[Int]],
+        cT: Array[Accumulator[Int]],
         mcT: Array[Accumulator[Int]], rT: Array[Accumulator[Int]],
         sT: Array[Accumulator[Int]], zT: Array[Accumulator[Int]],
         mStart: Array[Accumulator[Long]], cStart: Array[Accumulator[Long]],
         rStart: Array[Accumulator[Long]],
         sStart: Array[Accumulator[Long]], zStart: Array[Accumulator[Long]],
         mCpl: Array[Accumulator[Long]], cCpl: Array[Accumulator[Long]],
-        rCpl: Array[Accumulator[Long]],
+        rCpl: Array[Accumulator[Long]], rCount: Array[Accumulator[Int]],
+        cCount: Array[Accumulator[Int]],
         sCpl: Array[Accumulator[Long]], zCpl: Array[Accumulator[Long]],
         mrStart: Long,
-        mapFunc: (HyperedgeTuple[VD,ED],
+        mapFunc: (HyperedgeTuple[VD,ED], Accumulator[Int], Accumulator[Int], Accumulator[Int],
             Accumulator[Int]) => Iterator[(VertexId, A)],
         reduceFunc: (A, A) => A,
         activeSetOpt: Option[(VertexRDD[_], HyperedgeDirection)] = None)
@@ -314,11 +317,11 @@ class HypergraphImpl[VD: ClassTag, ED: ClassTag] protected(
                     val mapIterator = hyperedgePartition.upgradeIterator(
                         hyperedgeIter, mapUsesSrcAttr,mapUsesDstAttr)
                     val mapOutputs = mapIterator.flatMap(h =>
-                        mapFunc(h, mT(pid)))
+                        mapFunc(h, msT(pid), mdT(pid), msdT(pid), mddT(pid))).toIndexedSeq
                     mCpl(pid) += System.currentTimeMillis()
                     val ret = hyperedgePartition.vertices
-                            .aggregateUsingIndexP(mapOutputs,reduceFunc,
-                                cT(pid), cStart(pid), cCpl(pid)).iterator
+                            .aggregateUsingIndexCP(mapOutputs.iterator,reduceFunc,
+                                cT(pid), cStart(pid), cCpl(pid), cCount(pid)).iterator
                     mcT(pid) += (System.currentTimeMillis() - start).toInt
                     ret
                 }
@@ -326,7 +329,7 @@ class HypergraphImpl[VD: ClassTag, ED: ClassTag] protected(
         }, preservesPartitioning = true)
         .setName("HypergraphImpl.mapReduceTuples - preAgg")
 
-        vertices.aggregateUsingIndexP(preAgg, reduceFunc, rT, rStart, rCpl)
+        vertices.aggregateUsingIndexP(preAgg, reduceFunc, rT, rStart, rCpl, rCount)
     }
 
     private def accessesVertexAttr(closure: AnyRef, attrName: String)

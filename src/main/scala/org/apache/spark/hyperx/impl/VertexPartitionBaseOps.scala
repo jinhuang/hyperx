@@ -252,6 +252,38 @@ VertexPartitionBaseOpsConstructor]
         this.withValues(newValues).withMask(newMask)
     }
 
+    def aggregateUsingIndexCP[VD2: ClassTag](
+        iter: Iterator[Product2[VertexId, VD2]], reduceFunc: (VD2, VD2) => VD2,
+        acc: Accumulator[Int], startAcc: Accumulator[Long], completeAcc: Accumulator[Long], dAcc: Accumulator[Int])
+    : Self[VD2] = {
+        startAcc += System.currentTimeMillis()
+
+        val newMask = new BitSet(self.capacity)
+        val newValues = new Array[VD2](self.capacity)
+        val start = System.currentTimeMillis()
+
+        iter.foreach { product =>
+            val vid = product._1
+            val vdata = product._2
+            val pos = self.index.getPos(vid)
+            if (pos >= 0) {
+                if (newMask.get(pos)) {
+                    newValues(pos) = reduceFunc(newValues(pos), vdata)
+
+                } else {
+                    // otherwise just store the new value
+                    newMask.set(pos)
+                    newValues(pos) = vdata
+                }
+            }
+
+            dAcc += 1
+        }
+        acc += (System.currentTimeMillis() - start).toInt
+        completeAcc += System.currentTimeMillis()
+        this.withValues(newValues).withMask(newMask)
+    }
+
     def aggregateUsingIndexP[VD2: ClassTag](
         iter: Iterator[Product2[VertexId, VD2]], reduceFunc: (VD2, VD2) => VD2,
         tracker: Accumulator[Int], startTracker: Accumulator[Long], completeTracker: Accumulator[Long])
