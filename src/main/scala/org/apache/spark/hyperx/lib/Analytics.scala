@@ -188,7 +188,6 @@ object Analytics extends Logging {
 
                 val ret = RandomWalk.run(hypergraph, num, maxIter)
                 ret.vertices.saveAsTextFile(outputPath + "rw")
-
                 sc.stop()
 
             case "lp" =>

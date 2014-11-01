@@ -9,5 +9,8 @@ package object partition {
     var costDemand = 1.0
     var norm = 2
 
+    var effectiveSrc = 0.0
+    var effectiveDst = 1.0
+
     private[partition] val searchEpsilonFraction = 0.01
 }

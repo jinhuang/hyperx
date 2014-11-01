@@ -1,5 +1,6 @@
 package org.apache.spark.hyperx.lib
 
+import org.apache.spark.hyperx.util.collection.HyperXPrimitiveVector
 import org.apache.spark.{Accumulator, Logging}
 import org.apache.spark.hyperx._
 import org.apache.spark.hyperx.util.HyperUtils
@@ -75,5 +76,8 @@ object RandomWalk extends Logging {
             activeDirection = HyperedgeDirection.Out)(
                     vertexProg, hyperedgeProg, messageCombiner)
 
+
+
     }
+
 }

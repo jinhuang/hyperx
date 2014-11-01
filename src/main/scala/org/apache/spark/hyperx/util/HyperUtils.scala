@@ -222,8 +222,10 @@ object HyperUtils {
      * elements and summing the frequencies for the
      * existing elements
      */
-    def concatenate[K](a: mutable.HashMap[K, Int], b: mutable.HashMap[K, Int]): mutable.HashMap[K, Int] = {
-        a.foreach(e => if (b.contains(e._1)) b.update(e._1, b(e._1) + e._2) else b.update(e._1, e._2))
+    def concatenate[K](a: mutable.HashMap[K, Int], b: mutable.HashMap[K, Int])
+    : mutable.HashMap[K, Int] = {
+        a.foreach(e => if (b.contains(e._1)) b.update(e._1, b(e._1) + e._2)
+                        else b.update(e._1, e._2))
         b
     }
 
@@ -258,7 +260,7 @@ object HyperUtils {
 
     private[hyperx] def effectiveCount(srcCount: Int, dstCount: Int): Int = {
 //        (17 + 0.125 * dstCount + 65 + 0.875 * srcCount).toInt]
-        (srcCount * 1.25 + dstCount * 1.0).toInt
+        (srcCount * 2.5 + dstCount * 1.0).toInt
     }
 
     private val runtime = Runtime.getRuntime

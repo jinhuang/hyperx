@@ -37,7 +37,7 @@ class HyperXPrimitiveVector[@specialized(Long, Int, Double) V: ClassTag](initial
     }
 
     def +=(value: V): Unit = {
-        if (_numElements == _array.length) {
+        if (_numElements >= _array.length) {
             resize(_array.length * 2)
         }
         _array(_numElements) = value

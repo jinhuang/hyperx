@@ -19,7 +19,8 @@ trait PartitionStrategy extends Serializable with Logging {
         val start = System.currentTimeMillis()
         k = numParts
         search(input)
-        logInfo("HYPERX PARTITION: partition in %d ms".format(System.currentTimeMillis() - start))
+        logInfo("HYPERX PARTITION: partition in %d ms".format(
+            System.currentTimeMillis() - start))
         printStatistics()
         (vRDD.map(v => (v._2, v._1)), hRDD.map(h => (h._2, h._1)))
     }
@@ -45,37 +46,33 @@ trait PartitionStrategy extends Serializable with Logging {
         logInfo("HYPERX PARTITION: hyperedges %d vertices %d".format(numH, numV))
 
         // demands
-        val demands = hRDD.map(h => Tuple2(h._2, HyperUtils.iteratorFromHString(h._1).toSet)).reduceByKey(_.union(_)).map(_._2.size).collect()
+        val demands = hRDD.map(h =>
+            Tuple2(h._2, HyperUtils.iteratorFromHString(h._1).toSet))
+            .reduceByKey(_.union(_)).map(_._2.size).collect()
         logArray("demands", demands)
-//        logInfo("HYPERX PARTITION: demands avg %d min %d max %d std %d std percent %f"
-//                .format(HyperUtils.avg(demands).toInt, demands.min, demands.max, HyperUtils.dvt(demands).toInt,
-//                HyperUtils.dvt(demands) / HyperUtils.avg(demands)))
 
         // degrees
         val degrees = hRDD.map{h =>
             val pair = HyperUtils.countDetailDegreeFromHString(h._1)
-            Tuple2(h._2, pair)}.reduceByKey((a, b) => (a._1 + b._1, a._2 + b._2)).map(_._2).collect()
+            Tuple2(h._2, pair)}
+            .reduceByKey((a, b) => (a._1 + b._1, a._2 + b._2)).map(_._2)
+            .collect()
         val srcDegrees = degrees.map(_._1)
         val dstDegrees = degrees.map(_._2)
         logArray("source degrees", srcDegrees)
         logArray("destination degrees", dstDegrees)
 
-//        logInfo("HYPERX PARTITION: degrees avg %d min %d max %d std %d std percent %f"
-//                .format(HyperUtils.avg(degrees).toInt, degrees.min, degrees.max, HyperUtils.dvt(degrees).toInt,
-//                HyperUtils.dvt(degrees) / HyperUtils.avg(degrees)))
-
         // locals
-        val locals = vRDD.map(v => Tuple2(v._2, 1)).reduceByKey(_ + _).map(_._2).collect()
+        val locals = vRDD.map(v => Tuple2(v._2, 1))
+          .reduceByKey(_ + _).map(_._2).collect()
         logArray("locals", locals)
-//        logInfo("HYPERX PARTITION: locals avg %d min %d max %d std %d std percent %f"
-//                .format(HyperUtils.avg(locals).toInt, locals.min, locals.max, HyperUtils.dvt(locals).toInt,
-//                HyperUtils.dvt(locals) / HyperUtils.avg(locals)))
     }
 
     private def logArray(name: String, ary: Array[Int]): Unit = {
         logInfo("HYPERX PARTITION: %s avg %d min %d max %d std %d std percent %f"
-            .format(name, HyperUtils.avg(ary).toInt, ary.min, ary.max, HyperUtils.dvt(ary).toInt,
-                HyperUtils.dvt(ary) / HyperUtils.avg(ary)))
+            .format(name, HyperUtils.avg(ary).toInt, ary.min, ary.max,
+            HyperUtils.dvt(ary).toInt, HyperUtils.dvt(ary) / HyperUtils.avg(ary)
+          ))
     }
 
     private[partition] var k: Int = 0

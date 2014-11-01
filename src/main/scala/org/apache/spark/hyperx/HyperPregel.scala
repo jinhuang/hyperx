@@ -71,14 +71,15 @@ object HyperPregel extends Logging {
         h
     }
 
+    /** The debug version with various performance logs */
     def run[VD: ClassTag, ED: ClassTag, A: ClassTag](
         sc: SparkContext,
         hypergraph: Hypergraph[VD, ED], initialMsg: A,
         maxIterations: Int = Int.MaxValue,
         activeDirection: HyperedgeDirection = HyperedgeDirection.Either)(
         vprog: (VertexId, VD, A) => VD,
-        hprog: (HyperedgeTuple[VD, ED], Accumulator[Int], Accumulator[Int], Accumulator[Int], Accumulator[Int]) =>
-                Iterator[(VertexId, A)],
+        hprog: (HyperedgeTuple[VD, ED], Accumulator[Int], Accumulator[Int],
+            Accumulator[Int], Accumulator[Int]) => Iterator[(VertexId, A)],
         mergeMsg: (A, A) => A): Hypergraph[VD, ED] = {
 
         var h = hypergraph.mapVertices((vid, data) =>
@@ -168,14 +169,16 @@ object HyperPregel extends Logging {
             val cCount = Array.fill(k)(sc.accumulator(0))
             val mrStart = System.currentTimeMillis()
             logInfo("HYPERX DEBUGGING: mrt starts" )
-            msg = h.mapReduceTuplesP(sc, msT, mdT, msdT, mddT, cT, mcT, rT, sT, zT,
-                mStart, cStart, rStart, sStart, zStart,
-                mComplete, cComplete, rComplete, rCount, cCount, sComplete, zComplete, mrStart,
+            msg = h.mapReduceTuplesP(sc, msT, mdT, msdT, mddT, cT, mcT, rT,
+                sT, zT, mStart, cStart, rStart, sStart, zStart,
+                mComplete, cComplete, rComplete, rCount, cCount, sComplete,
+                zComplete, mrStart,
                 hprog, mergeMsg, Some(x = (newVerts, activeDirection))).cache()
             val scanTime = System.currentTimeMillis() - mrStart
             activeMsg = msg.count()
             val msVals = msT.map(_.value)
             val mdVals = mdT.map(_.value)
+            val mVals = (0 until k).map(i => msVals(i) + mdVals(i)).toArray
             val msdVals = msdT.map(_.value)
             val mddVals = mddT.map(_.value)
             val cVals = cT.map(_.value)
@@ -184,33 +187,49 @@ object HyperPregel extends Logging {
             val rcVals = rCount.map(_.value)
             val sVals = sT.map(_.value)
             val zVals = zT.map(_.value)
-            val cDuration = (0 until k).map(i => (cComplete(i).value - cStart(i).value).toInt).toArray
+            val cDuration = (0 until k).map(i =>
+                (cComplete(i).value - cStart(i).value).toInt).toArray
 
             logInfo("HYPERX DEBUGGING: %d generates %d messages in %d ms"
-                .format(i, activeMsg, (System.currentTimeMillis() - start).toInt))
+                .format(i, activeMsg,
+                    (System.currentTimeMillis() - start).toInt))
             logInfo("HYPERX DEBUGGING: inner %d outer %d mrt %d"
-                .format(inner, outer, (System.currentTimeMillis() - mrStart).toInt))
-            logInfo("HYPERX DEBUGGING: scan: %d scheduling and shipping tasks: %d".format(scanTime, - mrStart + sStart.map(_.value).min - scanTime))
-//            logInfo("HYPERX DEBUGGING: mrt 1 active set: starts %d completes %d"
-//                    .format(- mrStart + sStart.map(_.value).min, - mrStart + sComplete.map(_.value).max))
-            logInfo("HYPERX DEBUGGING: active set (pipeline): %d".format(sComplete.map(_.value).max - sStart.map(_.value).min))
-            logInfo("HYPERX DEBUGGING: active set details : ship avg %d min %d max %d std %d zip avg %d min %d max %d std %d std percent %f"
-                    .format(HyperUtils.avg(sVals).toInt, sVals.min, sVals.max, HyperUtils.dvt(sVals).toInt,
-                        HyperUtils.avg(zVals).toInt, zVals.min, zVals.max, HyperUtils.dvt(zVals).toInt, HyperUtils.dvt(zVals) / HyperUtils.avg(zVals)))
-            logInfo("HYPERX DEBUGGING: map-combine (pipeline): %d starts %d completes %d avg %d min %d max %d std %d std percent %f"
-                .format(cComplete.map(_.value).max - cStart.map(_.value).min, - mrStart + cStart.map(_.value).min,
-                        - mrStart + cComplete.map(_.value).max, HyperUtils.avg(cVals).toInt, cVals.min, cVals.max,
-                        HyperUtils.dvt(cVals).toInt, HyperUtils.dvt(cVals) / HyperUtils.avg(cVals)))
-            logArray("map-combine (pure duration)", cDuration)
+                .format(inner, outer,
+                    (System.currentTimeMillis() - mrStart).toInt))
+            logInfo(("HYPERX DEBUGGING: scan: %d scheduling and " +
+                "shipping tasks: %d").format(
+                    scanTime, - mrStart + sStart.map(_.value).min - scanTime))
+            logInfo("HYPERX DEBUGGING: active set (pipeline): %d"
+                .format(sComplete.map(_.value).max - sStart.map(_.value).min))
+            logInfo(("HYPERX DEBUGGING: active set details : ship avg" +
+                " %d min %d max %d std %d zip avg %d min %d max %d std" +
+                " %d std percent %f")
+                    .format(HyperUtils.avg(sVals).toInt, sVals.min, sVals.max,
+                    HyperUtils.dvt(sVals).toInt, HyperUtils.avg(zVals).toInt,
+                    zVals.min, zVals.max, HyperUtils.dvt(zVals).toInt,
+                    HyperUtils.dvt(zVals) / HyperUtils.avg(zVals)))
+            logInfo(("HYPERX DEBUGGING: map (pipeline): %d starts %d completes" +
+                " %d avg %d min %d max %d std %d std percent %f")
+                .format(mComplete.map(_.value).max - mStart.map(_.value).min,
+                    - mrStart + mStart.map(_.value).min,
+                    - mrStart + mComplete.map(_.value).max,
+                    HyperUtils.avg(mVals).toInt, mVals.min, mVals.max,
+                    HyperUtils.dvt(mVals).toInt,
+                    HyperUtils.dvt(mVals) / HyperUtils.avg(mVals)))
             logArray("map (details) src", msVals)
             logArray("map (details) dst", mdVals)
             logArray("map (details) srcDegree", msdVals)
             logArray("map (details) dstDegree", mddVals)
+            logArray("combine", cDuration)
             logArray("combine (details) vertex count", ccVals)
-            logInfo("HYPERX DEBUGGING: reduce (pipeline): %d starts %d completes %d avg %d min %d max %d std %d std percent %f"
-                .format(rComplete.map(_.value).max - rStart.map(_.value).min, - mrStart + rStart.map(_.value).min,
-                        - mrStart + rComplete.map(_.value).max, HyperUtils.avg(rVals).toInt, rVals.min, rVals.max,
-                        HyperUtils.dvt(rVals).toInt, HyperUtils.dvt(rVals) / HyperUtils.avg(rVals)))
+            logInfo(("HYPERX DEBUGGING: reduce (pipeline): %d starts %d " +
+                "completes %d avg %d min %d max %d std %d std percent %f")
+                .format(rComplete.map(_.value).max - rStart.map(_.value).min,
+                    - mrStart + rStart.map(_.value).min,
+                    - mrStart + rComplete.map(_.value).max,
+                    HyperUtils.avg(rVals).toInt, rVals.min, rVals.max,
+                    HyperUtils.dvt(rVals).toInt,
+                    HyperUtils.dvt(rVals) / HyperUtils.avg(rVals)))
             logArray("reduce (details) vertex count", rcVals)
 
             // unpersist old hypergraphs, vertices, and messages
@@ -225,7 +244,8 @@ object HyperPregel extends Logging {
 
     private def logArray(name: String, ary: Array[Int]): Unit = {
         logInfo("HYPERX DEBUGGING: %s avg %d min %d max %d std %d std percent %f"
-                .format(name, HyperUtils.avg(ary).toInt, ary.min, ary.max, HyperUtils.dvt(ary).toInt,
-                    HyperUtils.dvt(ary) / HyperUtils.avg(ary)))
+                .format(name, HyperUtils.avg(ary).toInt, ary.min,
+                ary.max, HyperUtils.dvt(ary).toInt,
+                HyperUtils.dvt(ary) / HyperUtils.avg(ary)))
     }
 }

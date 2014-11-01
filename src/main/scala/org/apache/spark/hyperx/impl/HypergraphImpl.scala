@@ -252,8 +252,8 @@ class HypergraphImpl[VD: ClassTag, ED: ClassTag] protected(
         cCount: Array[Accumulator[Int]],
         sCpl: Array[Accumulator[Long]], zCpl: Array[Accumulator[Long]],
         mrStart: Long,
-        mapFunc: (HyperedgeTuple[VD,ED], Accumulator[Int], Accumulator[Int], Accumulator[Int],
-            Accumulator[Int]) => Iterator[(VertexId, A)],
+        mapFunc: (HyperedgeTuple[VD,ED], Accumulator[Int], Accumulator[Int],
+            Accumulator[Int], Accumulator[Int]) => Iterator[(VertexId, A)],
         reduceFunc: (A, A) => A,
         activeSetOpt: Option[(VertexRDD[_], HyperedgeDirection)] = None)
     : VertexRDD[A] = {
@@ -263,11 +263,14 @@ class HypergraphImpl[VD: ClassTag, ED: ClassTag] protected(
         val mapUsesDstAttr = accessesVertexAttr(mapFunc, "dstAttr")
 
         // ship attributes accordingly
-        replicatedVertexView.upgradeP(vertices, mapUsesSrcAttr, mapUsesDstAttr, sT, zT, sStart, zStart, sCpl, zCpl, mrStart)
+        replicatedVertexView.upgradeP(vertices,
+            mapUsesSrcAttr, mapUsesDstAttr, sT, zT, sStart,
+            zStart, sCpl, zCpl, mrStart)
 
         val view = activeSetOpt match {
             case Some((activeSet, _)) =>
-                replicatedVertexView.withActiveSetP(activeSet, sStart, sCpl, sT, zT)
+                replicatedVertexView.withActiveSetP(activeSet,
+                    sStart, sCpl, sT, zT)
             case None =>
                 replicatedVertexView
         }
@@ -317,11 +320,13 @@ class HypergraphImpl[VD: ClassTag, ED: ClassTag] protected(
                     val mapIterator = hyperedgePartition.upgradeIterator(
                         hyperedgeIter, mapUsesSrcAttr,mapUsesDstAttr)
                     val mapOutputs = mapIterator.flatMap(h =>
-                        mapFunc(h, msT(pid), mdT(pid), msdT(pid), mddT(pid))).toIndexedSeq
+                        mapFunc(h, msT(pid), mdT(pid), msdT(pid), mddT(pid)))
+                        .toIndexedSeq
                     mCpl(pid) += System.currentTimeMillis()
                     val ret = hyperedgePartition.vertices
-                            .aggregateUsingIndexCP(mapOutputs.iterator,reduceFunc,
-                                cT(pid), cStart(pid), cCpl(pid), cCount(pid)).iterator
+                            .aggregateUsingIndexCP(mapOutputs.iterator,
+                            reduceFunc, cT(pid), cStart(pid), cCpl(pid),
+                            cCount(pid)).iterator
                     mcT(pid) += (System.currentTimeMillis() - start).toInt
                     ret
                 }
@@ -329,7 +334,8 @@ class HypergraphImpl[VD: ClassTag, ED: ClassTag] protected(
         }, preservesPartitioning = true)
         .setName("HypergraphImpl.mapReduceTuples - preAgg")
 
-        vertices.aggregateUsingIndexP(preAgg, reduceFunc, rT, rStart, rCpl, rCount)
+        vertices.aggregateUsingIndexP(preAgg, reduceFunc, rT,
+            rStart, rCpl, rCount)
     }
 
     private def accessesVertexAttr(closure: AnyRef, attrName: String)
