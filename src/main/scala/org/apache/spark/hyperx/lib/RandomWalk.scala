@@ -1,9 +1,8 @@
 package org.apache.spark.hyperx.lib
 
-import org.apache.spark.hyperx.util.collection.HyperXPrimitiveVector
-import org.apache.spark.{Accumulator, Logging}
 import org.apache.spark.hyperx._
 import org.apache.spark.hyperx.util.HyperUtils
+import org.apache.spark.{Accumulator, Logging}
 
 import scala.collection.mutable
 import scala.reflect.ClassTag
@@ -57,8 +56,13 @@ object RandomWalk extends Logging {
         = {
             var start = System.currentTimeMillis()
             val dstSize = hyperedge.dstAttr.size
-            val msgVal = hyperedge.srcAttr.map(attr =>
-                attr._2 * hyperedge.attr(attr._1)).sum * 1.0 / dstSize
+            val srcArray = Array.fill(hyperedge.srcAttr.size)(0)
+            val msgVal = hyperedge.srcAttr.zipWithIndex.map{attr =>
+                val start = System.currentTimeMillis()
+                val ret = attr._1._2 * hyperedge.attr(attr._1._1)
+                srcArray(attr._2) = (System.currentTimeMillis() - start).toInt
+                ret
+            }.sum * 1.0 / dstSize
             srcAcc += (System.currentTimeMillis() - start).toInt
             start = System.currentTimeMillis()
             val ret = hyperedge.dstAttr.map(attr => (attr._1, msgVal)).toIterator

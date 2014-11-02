@@ -16,7 +16,7 @@ class GreedyPartition extends PartitionStrategy{
             val onepass = p.map{h =>
                 val pid = (0 until k).map(i =>
                     (i, demands(i).size * costDemand +
-                        degrees(i) * costHyperedge)).minBy(_._2)._1
+                        degrees(i) * costDegree)).minBy(_._2)._1
                 HyperUtils.iteratorFromHString(h).foreach(demands(pid).add)
                 //degrees(pid) += HyperUtils.countDegreeFromHString(h)
                 val pair = HyperUtils.countDetailDegreeFromHString(h)
@@ -32,9 +32,9 @@ class GreedyPartition extends PartitionStrategy{
                         .count(demands(i).contains))
                 val newPid = ((0 until k).filter(_ != h._2).map(i =>
                     (i, (demands(i).size + extraDemand(i)) * costDemand +
-                        (degrees(i) + count) * costHyperedge)).toIterator ++
+                        (degrees(i) + count) * costDegree)).toIterator ++
                     Iterator((h._2, demands(h._2).size * costDemand +
-                        degrees(h._2) * costHyperedge)))
+                        degrees(h._2) * costDegree)))
                     .minBy(_._2)._1
                 if (newPid != h._2) {
                     degrees(h._2) -= count

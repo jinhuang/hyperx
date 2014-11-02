@@ -32,11 +32,14 @@ trait PartitionStrategy extends Serializable with Logging {
     private[partition] var vRDD: RDD[(VertexId, PartitionId)] = _
     private[partition] var hRDD: RDD[(String, PartitionId)] = _
 
-    def setObjectiveParams(h: Double, v: Double, d: Double, norm_ : Int) = {
-        costHyperedge = h
-        costReplica = v
-        costDemand = d
-        norm = norm_
+    def setPartitionParams(degreeCost: Double, replicaCost: Double, 
+        demandCost: Double, normSpace: Int, effSrc: Double, effDst: Double) = {
+        costDegree = degreeCost
+        costReplica = replicaCost
+        costDemand = demandCost
+        norm = normSpace
+        effectiveSrc = effSrc
+        effectiveDst = effDst
     }
 
     private def printStatistics(): Unit = {

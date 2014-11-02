@@ -24,11 +24,13 @@ object Analytics extends Logging {
                         "--vertexLevel=<MEMORY_ONLY|MEMORY_ONLY_SER> " +
                         "--hyperedgeLevel=<MEMORY_ONLY|MEMORY_ONLY_SER> " +
                         "--weighted=<true|false> " +
-                        "--partStrategy=<Random|OnePass|Local|Alternate|OnePassP|LocalP|AlternateP>" +
+                        "--partStrategy=<Plain|Greedy>" +
                         "--outputPath=<output path> " +
                         "--objectiveH=<double> " +
                         "--objectiveV=<double> " +
                         "--objectiveNorm=<integer> " +
+                        "--effectiveSrc=<double> " +
+                        "--effectiveDst=<double> " +
                         "[other options]")
             System.exit(1)
         }
@@ -92,7 +94,10 @@ object Analytics extends Logging {
         val objectiveV = options.remove("objectiveV").map(_.toDouble).getOrElse(1.0)
         val objectiveD = options.remove("objectiveD").map(_.toDouble).getOrElse(0.8)
         val objectiveNorm = options.remove("objectiveNorm").map(_.toInt).getOrElse(2)
-        partitionStrategy.setObjectiveParams(objectiveH, objectiveV, objectiveD, objectiveNorm)
+        val effectiveSrc = options.remove("effectiveSrc").map(_.toDouble).getOrElse(1.0)
+        val effectiveDst = options.remove("effectiveDst").map(_.toDouble).getOrElse(1.0)
+        partitionStrategy.setPartitionParams(objectiveH, objectiveV, objectiveD,
+            objectiveNorm, effectiveSrc, effectiveDst)
 
         taskType match {
             case "load" => // loading test
