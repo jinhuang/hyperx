@@ -22,6 +22,8 @@ package object hyperx {
 
     type VertexId = Long
 
+    type HyperedgeId = Int
+
     /** Integer identifier of a hypergraph partition. */
     type PartitionId = Int
 

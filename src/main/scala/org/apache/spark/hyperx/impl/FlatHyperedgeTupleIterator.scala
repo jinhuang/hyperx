@@ -1,0 +1,71 @@
+package org.apache.spark.hyperx.impl
+
+import org.apache.spark.hyperx.util.collection.HyperXOpenHashMap
+import org.apache.spark.hyperx.{Hyperedge, HyperedgeTuple, VertexId}
+
+import scala.reflect.ClassTag
+
+private[impl]
+class FlatHyperedgeTupleIterator[VD: ClassTag, ED: ClassTag](
+    val hyperedgePartition: FlatHyperedgePartition[ED, VD],
+    val includeSrc: Boolean, val includeDst: Boolean)
+    extends Iterator[HyperedgeTuple[VD, ED]]{
+
+    private var pos = 0
+
+    override def hasNext: Boolean = pos < hyperedgePartition.size
+
+    override def next() = {
+        val tuple = new HyperedgeTuple[VD, ED]
+        tuple.srcAttr = new HyperXOpenHashMap[VertexId, VD]()
+        tuple.dstAttr = new HyperXOpenHashMap[VertexId, VD]()
+        var i = hyperedgePartition.hIndex._values(pos)
+        val currentId = hyperedgePartition.hyperedgeIds(i)
+        while(currentId == hyperedgePartition.hyperedgeIds(i)) {
+            val vid = hyperedgePartition.vertexIds(i)
+            if (hyperedgePartition.srcFlags(i)) {
+                if (includeSrc) {
+                    tuple.srcAttr.update(vid, hyperedgePartition.vertices(vid))
+                } else {
+                    tuple.srcAttr.update(vid, null.asInstanceOf[VD])
+                }
+            } else {
+                if (includeDst) {
+                    tuple.dstAttr.update(vid, hyperedgePartition.vertices(vid))
+                } else {
+                    tuple.dstAttr.update(vid, null.asInstanceOf[VD])
+                }
+            }
+            i += 1
+        }
+        tuple.attr = hyperedgePartition.data(currentId)
+        pos += 1
+        tuple
+    }
+}
+
+
+private[impl]
+class ReusingFlatHyperedgeTupleIterator[VD: ClassTag, ED: ClassTag](
+    val hyperedgeIter: Iterator[Hyperedge[ED]],
+    val hyperedgePartition: FlatHyperedgePartition[ED, VD],
+    val includeSrc: Boolean, val includeDst: Boolean)
+    extends Iterator[HyperedgeTuple[VD, ED]]  {
+
+    private val tuple = new HyperedgeTuple[VD, ED]
+
+    override def hasNext: Boolean = hyperedgeIter.hasNext
+
+    override def next() = {
+        tuple.set(hyperedgeIter.next())
+        if (includeSrc) {
+            tuple.srcAttr.foreach(pair => tuple.srcAttr.update(pair._1,
+                hyperedgePartition.vertices(pair._1)))
+        }
+        if (includeDst) {
+            tuple.dstAttr.foreach(pair => tuple.dstAttr.update(pair._1,
+                hyperedgePartition.vertices(pair._1)))
+        }
+        tuple
+    }
+}
