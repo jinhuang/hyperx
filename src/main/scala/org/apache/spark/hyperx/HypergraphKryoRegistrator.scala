@@ -30,6 +30,7 @@ class HypergraphKryoRegistrator extends KryoRegistrator {
         kryo.register(classOf[immutable.Map[Object, Object]])
         kryo.register(classOf[Array[Object]])
         kryo.register(classOf[HyperedgePartition[Object, Object]])
+        kryo.register(classOf[FlatHyperedgePartition[Object, Object]])
         kryo.register(classOf[Hyperedge[Object]])
         kryo.register(classOf[HyperedgeDirection])
         kryo.register(classOf[ReplicatedVertexView[Object, Object]])
