@@ -89,6 +89,21 @@ class HyperXOpenHashMap[@specialized(Long, Int) K: ClassTag,
         else null.asInstanceOf[V]
     }
 
+//    def nth(n: Int): V = {
+//        if (n >= keySet.size) {
+//            null.asInstanceOf[V]
+//        }
+//        else {
+//            var pos = keySet.nextPos(0)
+//            (0 until n).foreach { i => pos = keySet.nextPos(pos + 1)}
+//            _values(pos)
+//        }
+//    }
+
+    def nextPos(pos: Int) = {
+        keySet.nextPos(pos)
+    }
+
     /** Get the value for a given key, or returns elseValue if it doesn't
       * exist. */
     def getOrElse(k: K, elseValue: V): V = {

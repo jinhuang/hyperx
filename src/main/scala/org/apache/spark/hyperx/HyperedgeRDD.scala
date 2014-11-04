@@ -1,6 +1,6 @@
 package org.apache.spark.hyperx
 
-import org.apache.spark.hyperx.impl.{HyperedgePartition, HyperedgePartitionBuilder}
+import org.apache.spark.hyperx.impl.{FlatHyperedgePartition, FlatHyperedgePartitionBuilder}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.{OneToOneDependency, Partition, Partitioner, TaskContext}
@@ -9,7 +9,8 @@ import scala.reflect.{ClassTag, classTag}
 
 /** Forked from GraphX, modified by Jin Huang */
 class HyperedgeRDD[@specialized ED: ClassTag, VD: ClassTag](
-        val partitionsRDD: RDD[(PartitionId, HyperedgePartition[ED, VD])],
+//        val partitionsRDD: RDD[(PartitionId, HyperedgePartition[ED, VD])],
+        val partitionsRDD: RDD[(PartitionId, FlatHyperedgePartition[ED, VD])],
         val targetStorageLevel: StorageLevel = StorageLevel.MEMORY_ONLY)
         extends RDD[Hyperedge[ED]](partitionsRDD.context,
             List(new OneToOneDependency(partitionsRDD))) {
@@ -26,7 +27,7 @@ class HyperedgeRDD[@specialized ED: ClassTag, VD: ClassTag](
 
     override def compute(part: Partition, context: TaskContext):
     Iterator[Hyperedge[ED]] = {
-        val p = firstParent[(PartitionId, HyperedgePartition[ED,
+        val p = firstParent[(PartitionId, FlatHyperedgePartition[ED,
                 VD])].iterator(part, context)
         if (p.hasNext) {
             p.next()._2.iterator.map(_.copy())
@@ -71,15 +72,16 @@ class HyperedgeRDD[@specialized ED: ClassTag, VD: ClassTag](
      * Reverse all the hyperedges in this RDD
      * @return a new HyperedgeRDD containing all the hyperedge reversed
      */
-    def reverse: HyperedgeRDD[ED, VD] = mapHyperedgePartitions((pid,
-                                                                part) => part
-            .reverse)
+    def reverse: HyperedgeRDD[ED, VD] =
+        mapHyperedgePartitions((pid,part) => part.reverse)
 
     /** Applies a function on each hyperedge partition,
       * and produces a new HyperedgeRDD with new partitions */
     private[hyperx] def mapHyperedgePartitions[ED2: ClassTag, VD2: ClassTag](
-        f: (PartitionId, HyperedgePartition[ED, VD]) =>
-                HyperedgePartition[ED2, VD2]): HyperedgeRDD[ED2, VD2] = {
+//        f: (PartitionId, HyperedgePartition[ED, VD]) =>
+//                HyperedgePartition[ED2, VD2]): HyperedgeRDD[ED2, VD2] = {
+        f: (PartitionId, FlatHyperedgePartition[ED, VD]) =>
+            FlatHyperedgePartition[ED2, VD2]): HyperedgeRDD[ED2, VD2] = {
         this.withPartitionsRDD[ED2, VD2](partitionsRDD.mapPartitions({ iter =>
             if (iter.hasNext) {
                 val (pid, ep) = iter.next()
@@ -139,7 +141,8 @@ class HyperedgeRDD[@specialized ED: ClassTag, VD: ClassTag](
     /** Replaces the vertex partitions while preserving all other properties
       * of the VertexRDD. */
     private[hyperx] def withPartitionsRDD[ED2: ClassTag, VD2: ClassTag](
-        partitionsRDD: RDD[(PartitionId, HyperedgePartition[ED2, VD2])])
+//        partitionsRDD: RDD[(PartitionId, HyperedgePartition[ED2, VD2])])
+        partitionsRDD: RDD[(PartitionId, FlatHyperedgePartition[ED2, VD2])])
     : HyperedgeRDD[ED2, VD2] = {
         new HyperedgeRDD(partitionsRDD, this.targetStorageLevel)
     }
@@ -167,16 +170,23 @@ object HyperedgeRDD {
      * @tparam VD the type of vertex attribute
      * @return a new HyperedgeRDD created for the input hyperedges
      */
-    def fromHyperedges[ED: ClassTag, VD: ClassTag](hyperedges:
-                                                   RDD[Hyperedge[ED]]):
-    HyperedgeRDD[ED, VD] = {
-        val hyperedgePartitions = hyperedges.mapPartitionsWithIndex{
-            (pid,iter) =>
-            val builder = new HyperedgePartitionBuilder[ED, VD]
-            iter.foreach { e =>
-                builder.add(e.srcIds, e.dstIds, e.attr)
+    def fromHyperedges[ED: ClassTag, VD: ClassTag](
+        hyperedges:RDD[Hyperedge[ED]]): HyperedgeRDD[ED, VD] = {
+//        val hyperedgePartitions = hyperedges.mapPartitionsWithIndex{
+//            (pid,iter) =>
+//            val builder = new HyperedgePartitionBuilder[ED, VD]
+//            iter.foreach { e =>
+//                builder.add(e.srcIds, e.dstIds, e.attr)
+//            }
+//            Iterator((pid, builder.toHyperedgePartition))
+//        }
+//        HyperedgeRDD.fromHyperedgePartitions(hyperedgePartitions)
+        val hyperedgePartitions = hyperedges.mapPartitionsWithIndex{(pid, iter) =>
+            val builder = new FlatHyperedgePartitionBuilder[ED, VD]()
+            iter.zipWithIndex.foreach{h =>
+                builder.add(h._1.srcIds, h._1.dstIds, h._2, h._1.attr)
             }
-            Iterator((pid, builder.toHyperedgePartition))
+            Iterator((pid, builder.toFlatHyperedgePartition))
         }
         HyperedgeRDD.fromHyperedgePartitions(hyperedgePartitions)
     }
@@ -189,7 +199,8 @@ object HyperedgeRDD {
      * @return a new HyperedgeRDD created for the hyperedge partitions
      */
     def fromHyperedgePartitions[ED: ClassTag, VD: ClassTag](
-        hyperedgePartitions: RDD[(Int, HyperedgePartition[ED, VD])],
+//        hyperedgePartitions: RDD[(Int, HyperedgePartition[ED, VD])],
+        hyperedgePartitions: RDD[(Int, FlatHyperedgePartition[ED, VD])],
         storageLevel: StorageLevel = StorageLevel.MEMORY_ONLY)
     : HyperedgeRDD[ED, VD] = {
         new HyperedgeRDD(hyperedgePartitions, storageLevel)

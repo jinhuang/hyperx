@@ -169,10 +169,8 @@ class HyperedgePartition[
      *
      * It is safe to keep references to the objects from this iterator
      */
-    def tupleIterator(
-                             includeSrc: Boolean = true,
-                             includeDst: Boolean = true):
-    Iterator[HyperedgeTuple[VD, ED]] =
+    def tupleIterator(includeSrc: Boolean = true, includeDst: Boolean = true)
+    : Iterator[HyperedgeTuple[VD, ED]] =
         new HyperedgeTupleIterator(this, includeSrc, includeDst)
 
     /**

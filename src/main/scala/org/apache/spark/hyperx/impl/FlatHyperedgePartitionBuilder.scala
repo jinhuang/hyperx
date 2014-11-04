@@ -6,7 +6,7 @@ HyperXPrimitiveVector}
 
 import scala.reflect.ClassTag
 
-private[impl]
+private[hyperx]
 class FlatHyperedgePartitionBuilder[
     @specialized(Long, Int, Double) ED: ClassTag, VD: ClassTag](
     size: Int = 64, withIndex: Boolean = true) extends Serializable {
@@ -67,7 +67,7 @@ class FlatHyperedgePartitionBuilder[
         )
 
         new FlatHyperedgePartition(vertexIds.trim().array,
-            hyperedgeIds.trim().array, srcFlags.trim().array, data,
+            hIds.trim().array, srcFlags.trim().array, data,
             builtIndex, hIndices, vertices)
 
     }

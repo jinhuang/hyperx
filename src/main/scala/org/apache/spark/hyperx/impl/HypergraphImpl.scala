@@ -98,29 +98,57 @@ class HypergraphImpl[VD: ClassTag, ED: ClassTag] protected(
         }
     }
 
+//    override def mapHyperedges[ED2: ClassTag](
+//        f: (PartitionId,Iterator[Hyperedge[ED]]) => Iterator[ED2])
+//    : Hypergraph[VD, ED2] = {
+//        val newHyperedges = replicatedVertexView.hyperedges
+//                .mapHyperedgePartitions((pid, part) => part.map(f(pid,
+//            part.iterator)))
+//        new HypergraphImpl(vertices, replicatedVertexView.withHyperedges
+//                (newHyperedges))
+//    }
+
     override def mapHyperedges[ED2: ClassTag](
-        f: (PartitionId,Iterator[Hyperedge[ED]]) => Iterator[ED2])
+        f: (PartitionId, Iterator[Hyperedge[ED]]) => Iterator[(HyperedgeId, ED2)])
     : Hypergraph[VD, ED2] = {
         val newHyperedges = replicatedVertexView.hyperedges
-                .mapHyperedgePartitions((pid, part) => part.map(f(pid,
-            part.iterator)))
-        new HypergraphImpl(vertices, replicatedVertexView.withHyperedges
-                (newHyperedges))
+                .mapHyperedgePartitions((pid, part) =>
+            part.map(f(pid, part.iterator)))
+        new HypergraphImpl(vertices,
+            replicatedVertexView.withHyperedges(newHyperedges))
     }
 
+//    override def mapTuples[ED2: ClassTag](
+//        f: (PartitionId,Iterator[HyperedgeTuple[VD, ED]]) => Iterator[ED2])
+//    : Hypergraph[VD, ED2] = {
+//        vertices.cache()
+//        val mapUsesSrcAttr = accessesVertexAttr(f, "srcAttr")
+//        val mapUsesDstAttr = accessesVertexAttr(f, "dstAttr")
+//        replicatedVertexView.upgrade(vertices, mapUsesSrcAttr, mapUsesDstAttr)
+//        val newHyperedges = replicatedVertexView.hyperedges
+//                .mapHyperedgePartitions { (pid, part) =>
+//            part.map(f(pid, part.tupleIterator(mapUsesSrcAttr, mapUsesDstAttr)))
+//        }
+//        new HypergraphImpl(vertices, replicatedVertexView.withHyperedges
+//                (newHyperedges))
+//    }
     override def mapTuples[ED2: ClassTag](
-        f: (PartitionId,Iterator[HyperedgeTuple[VD, ED]]) => Iterator[ED2])
+        f: (PartitionId, Iterator[HyperedgeTuple[VD, ED]]) =>
+                Iterator[(HyperedgeId, ED2)])
     : Hypergraph[VD, ED2] = {
-        vertices.cache()
+        var start = System.currentTimeMillis()
         val mapUsesSrcAttr = accessesVertexAttr(f, "srcAttr")
         val mapUsesDstAttr = accessesVertexAttr(f, "dstAttr")
+
         replicatedVertexView.upgrade(vertices, mapUsesSrcAttr, mapUsesDstAttr)
+        logInfo("HYPERX DEBUGGING: map tuples upgrade " + (System.currentTimeMillis() - start))
+        start = System.currentTimeMillis()
         val newHyperedges = replicatedVertexView.hyperedges
-                .mapHyperedgePartitions { (pid, part) =>
-            part.map(f(pid, part.tupleIterator(mapUsesSrcAttr, mapUsesDstAttr)))
-        }
-        new HypergraphImpl(vertices, replicatedVertexView.withHyperedges
-                (newHyperedges))
+            .mapHyperedgePartitions{(pid, part) =>
+                part.map{f(pid, part.tupleIterator(mapUsesSrcAttr, mapUsesDstAttr))}
+            }
+        logInfo("HYPERX DEBUGGING: map tuples map partitions " + (System.currentTimeMillis() - start))
+        new HypergraphImpl(vertices, replicatedVertexView.withHyperedges(newHyperedges))
     }
 
     override def subgraph(
@@ -184,7 +212,7 @@ class HypergraphImpl[VD: ClassTag, ED: ClassTag] protected(
                 case (pid, hyperedgePartition) =>
                     val activeFraction =
                         hyperedgePartition.numActives.getOrElse(0) /
-                                hyperedgePartition.indexSize.toFloat
+                                hyperedgePartition.sourceSize.toFloat
 
                     val hyperedgeIter = activeDirectionOpt match {
                         case Some(HyperedgeDirection.Both) =>
@@ -283,7 +311,7 @@ class HypergraphImpl[VD: ClassTag, ED: ClassTag] protected(
 //                    zStart(pid) += start
                     val activeFraction =
                         hyperedgePartition.numActives.getOrElse(0) /
-                                hyperedgePartition.indexSize.toFloat
+                                hyperedgePartition.sourceSize.toFloat
                     val hyperedgeIter = activeDirectionOpt match {
                         case Some(HyperedgeDirection.Both) =>
                             if (activeFraction < 0.8) {
@@ -427,7 +455,8 @@ object HypergraphImpl {
     /** Create a hypergraph from HyperedgePartitions,
       * setting referenced vertices to `defaultVertexAttr`. */
     def fromHyperedgePartitions[VD: ClassTag, ED: ClassTag](
-        hyperedgePartitions: RDD[(PartitionId, HyperedgePartition[ED, VD])],
+//        hyperedgePartitions: RDD[(PartitionId, HyperedgePartition[ED, VD])],
+        hyperedgePartitions: RDD[(PartitionId, FlatHyperedgePartition[ED, VD])],
         defaultVertexAttr: VD,
         hyperedgeStorageLevel: StorageLevel = StorageLevel.MEMORY_ONLY,
         vertexStorageLevel: StorageLevel = StorageLevel.MEMORY_ONLY)
@@ -449,17 +478,20 @@ object HypergraphImpl {
                 .flatMap(p => Iterator(p._2))
         val vertexPartitioner: Partitioner = strategy.getPartitioner
 
-        val hyperedges: RDD[(Int, HyperedgePartition[ED, VD])] =
+//        val hyperedges: RDD[(Int, HyperedgePartition[ED, VD])] =
+        val hyperedges: RDD[(Int, FlatHyperedgePartition[ED, VD])] =
             rdds._2.partitionBy(new HashPartitioner(numParts))
                     .mapPartitions({p =>
-                val builder = new HyperedgePartitionBuilder[ED, VD]()
+//                val builder = new HyperedgePartitionBuilder[ED, VD]()
+                val builder = new FlatHyperedgePartitionBuilder[ED, VD]()
                 var pid = 0
-                p.foreach{h =>
-                    val pair = HyperUtils.hyperedgeFromHString(h._2)
-                    pid = h._1
-                    builder.add(pair._1, pair._2, null.asInstanceOf[ED])
+                p.zipWithIndex.foreach{h =>
+                    val pair = HyperUtils.hyperedgeFromHString(h._1._2)
+                    pid = h._1._1
+                    builder.add(pair._1, pair._2, h._2, null.asInstanceOf[ED])
                 }
-                Iterator((pid, builder.toHyperedgePartition))
+//                Iterator((pid, builder.toHyperedgePartition))
+                Iterator((pid, builder.toFlatHyperedgePartition))
             }, preservesPartitioning = true)
         val hyperedgesRDD =
             HyperedgeRDD.fromHyperedgePartitions(hyperedges, hyperedgeLevel)
@@ -470,7 +502,8 @@ object HypergraphImpl {
     }
 
     def fromPartitions[VD: ClassTag, ED: ClassTag](
-        hyperedges: RDD[(Int, HyperedgePartition[ED, VD])],
+//        hyperedges: RDD[(Int, HyperedgePartition[ED, VD])],
+        hyperedges: RDD[(Int, FlatHyperedgePartition[ED, VD])],
         vertices: RDD[ShippableVertexPartition[VD]],
         hyperedgeLevel: StorageLevel = StorageLevel.MEMORY_ONLY,
         vertexLevel: StorageLevel = StorageLevel.MEMORY_ONLY) = {
@@ -496,18 +529,20 @@ object HypergraphImpl {
             Tuple2(v._2, (v._1, null.asInstanceOf[VD])))
                 .partitionBy(new HashPartitioner(numParts))
                 .flatMap(p => Iterator(p._2))
-        val hyperedges: RDD[(Int, HyperedgePartition[ED, VD])] =
+//        val hyperedges: RDD[(Int, HyperedgePartition[ED, VD])] =
+        val hyperedges: RDD[(Int, FlatHyperedgePartition[ED, VD])] =
             input.map(HyperUtils.pairFromPartitionedString)
                     .partitionBy(new HashPartitioner(numParts))
                     .mapPartitions({p =>
-                val builder = new HyperedgePartitionBuilder[ED, VD]()
+//                val builder = new HyperedgePartitionBuilder[ED, VD]()
+                val builder = new FlatHyperedgePartitionBuilder[ED, VD]()
                 var pid = 0
-                p.foreach{h =>
-                    val pair = HyperUtils.hyperedgeFromHString(h._2)
-                    pid = h._1
-                    builder.add(pair._1, pair._2, null.asInstanceOf[ED])
+                p.zipWithIndex.foreach{h =>
+                    val pair = HyperUtils.hyperedgeFromHString(h._1._2)
+                    pid = h._1._1
+                    builder.add(pair._1, pair._2, h._2, null.asInstanceOf[ED])
                 }
-                Iterator((pid, builder.toHyperedgePartition))
+                Iterator((pid, builder.toFlatHyperedgePartition))
             }, preservesPartitioning = true)
         val hyperedgesRDD =
             HyperedgeRDD.fromHyperedgePartitions(hyperedges, hyperedgeLevel)

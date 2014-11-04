@@ -129,32 +129,14 @@ Serializable {
      *            attribute value
      * @tparam ED2 the new edge attribute type
      */
-    def mapHyperedges[ED2: ClassTag](map: Hyperedge[ED] => ED2):
+    def mapHyperedges[ED2: ClassTag](map: Hyperedge[ED] => (HyperedgeId, ED2)):
     Hypergraph[VD, ED2] = {
         mapHyperedges((pid, iter) => iter.map(map))
     }
 
-    /**
-     * Transform each hyperedge attributes using the map function,
-     * passing it a whole partition
-     * at a time. The map function is given an iterator over edges within a
-     * logical partition
-     * as well as the partition's Id, and it should return a new iterator
-     * over the new values
-     * of each hyperedges. The new iterator's elements must correspond
-     * one-to-one with the
-     * old iterator's elements. If adjacent vertex values are desired,
-     * use `mapTuples`
-     * @param map a function that takes a partition id and an iterator over
-     *            all the
-     *            hyperedges in the partition, and must return an iterator
-     *            over the new values
-     *            for each hyepredge in the order of the input iterator
-     * @tparam ED2 the new hyperedge attribute type
-     */
-    def mapHyperedges[ED2: ClassTag](map: (PartitionId,
-            Iterator[Hyperedge[ED]]) => Iterator[ED2])
-    : Hypergraph[VD, ED2]
+    def mapHyperedges[ED2: ClassTag](
+        f: (PartitionId, Iterator[Hyperedge[ED]]) => Iterator[(HyperedgeId, ED2)]
+    ): Hypergraph[VD, ED2]
 
     /**
      * Transforms each hyperedge attributes using the map function,
@@ -167,7 +149,7 @@ Serializable {
      * @tparam ED2 the new hyperedge attribute type
      */
     def mapTuples[ED2: ClassTag](map: HyperedgeTuple[VD,
-            ED] => ED2): Hypergraph[VD, ED2] = {
+            ED] => (HyperedgeId, ED2)): Hypergraph[VD, ED2] = {
         mapTuples((pid, iter) => iter.map(map))
     }
 
@@ -186,8 +168,10 @@ Serializable {
      *            new hyperedge attribute values
      * @tparam ED2 the new hyperedge attribute type
      */
-    def mapTuples[ED2: ClassTag](map: (PartitionId,
-            Iterator[HyperedgeTuple[VD, ED]]) => Iterator[ED2])
+//    def mapTuples[ED2: ClassTag](map: (PartitionId,
+//            Iterator[HyperedgeTuple[VD, ED]]) => Iterator[ED2])
+//    : Hypergraph[VD, ED2]
+    def mapTuples[ED2: ClassTag](map: (PartitionId, Iterator[HyperedgeTuple[VD, ED]]) => Iterator[(HyperedgeId, ED2)])
     : Hypergraph[VD, ED2]
 
     /**

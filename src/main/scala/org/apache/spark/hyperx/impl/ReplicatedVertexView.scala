@@ -167,7 +167,9 @@ class ReplicatedVertexView[VD: ClassTag, ED: ClassTag](
         new ReplicatedVertexView(newHyperedges, hasSrcIds, hasDstIds)
     }
 
-    def withActiveSetP(actives: VertexRDD[_], start: Array[Accumulator[Long]], complete: Array[Accumulator[Long]], sT: Array[Accumulator[Int]], zT: Array[Accumulator[Int]]): ReplicatedVertexView[VD, ED] = {
+    def withActiveSetP(actives: VertexRDD[_], start: Array[Accumulator[Long]],
+        complete: Array[Accumulator[Long]], sT: Array[Accumulator[Int]],
+        zT: Array[Accumulator[Int]]): ReplicatedVertexView[VD, ED] = {
         val shippedActives = actives.shipVertexIdsP(start, sT)
                 .setName("ReplicatedVertexView.withActiveSet - shippedActives" +
                 " (broadcast)")

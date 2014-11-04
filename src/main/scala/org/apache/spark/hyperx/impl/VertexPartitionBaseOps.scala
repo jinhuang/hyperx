@@ -204,7 +204,8 @@ VertexPartitionBaseOpsConstructor]
     def innerJoinKeepLeft(iter: Iterator[Product2[VertexId, VD]]): Self[VD] = {
         val newMask = new BitSet(self.capacity)
         val newValues = new Array[VD](self.capacity)
-        System.arraycopy(self.values, 0, newValues, 0, newValues.length)
+//        System.arraycopy(self.values, 0, newValues, 0, newValues.length)
+        System.arraycopy(self.values, 0, newValues, 0, self.values.length)
         iter.foreach { pair =>
             val pos = self.index.getPos(pair._1)
             if (pos >= 0) {

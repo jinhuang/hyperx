@@ -83,6 +83,26 @@ object RoutingTablePartition {
         }
     }
 
+    def flatHyperedgePartitionToMsgs(pid: PartitionId,
+        hyperedgePartition: FlatHyperedgePartition[_, _])
+    : Iterator[RoutingTableMessage] = {
+        val map = new HyperXOpenHashMap[VertexId, Byte]()
+        val size = hyperedgePartition.vertexIds.size
+        (0 until size).foreach{i =>
+            val vid = hyperedgePartition.vertexIds(i)
+            val flag = hyperedgePartition.srcFlags(i)
+            if (flag) {
+                map.changeValue(vid, 0x1, (b: Byte) => (b | 0x1).toByte)
+            }
+            else {
+                map.changeValue(vid, 0x2, (b: Byte) => (b | 0x2).toByte)
+            }
+        }
+        map.map{v=>
+            toMessage(v._1, pid, v._2)
+        }.iterator
+    }
+
     private def toMessage(vid: VertexId, pid: PartitionId,
         position: Byte): RoutingTableMessage = {
         val positionUpper2 = position << 30

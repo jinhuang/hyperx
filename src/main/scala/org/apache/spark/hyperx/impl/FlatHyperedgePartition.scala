@@ -1,8 +1,9 @@
 package org.apache.spark.hyperx.impl
 
+import org.apache.spark.Logging
+import org.apache.spark.hyperx._
 import org.apache.spark.hyperx.util.HyperUtils
 import org.apache.spark.hyperx.util.collection.HyperXOpenHashMap
-import org.apache.spark.hyperx._
 
 import scala.reflect.ClassTag
 
@@ -29,7 +30,7 @@ class FlatHyperedgePartition[
     val hIndex: HyperXOpenHashMap[HyperedgeId, Int] = null,
     val vertices: VertexPartition[VD] = null,
     val activeSet: Option[VertexSet] = None
-    ) extends Serializable {
+    ) extends Serializable with Logging {
 
     val size: Int = hIndex.size
 
@@ -66,6 +67,17 @@ class FlatHyperedgePartition[
 
     def isActive(vid: VertexId): Boolean ={ activeSet.get.contains(vid)}
 
+    def isActive(vids: VertexSet): Boolean = {
+//        vids.iterator.map(isActive).reduce(_ || _)
+        val it = vids.iterator
+                while (it.hasNext) {
+                    if (activeSet.get.contains(it.next())) {
+                        return true
+                    }
+                }
+                false
+    }
+
     def numActives: Option[Int] = activeSet.map(_.size)
 
     def reverse: FlatHyperedgePartition[ED, VD] = {
@@ -100,17 +112,25 @@ class FlatHyperedgePartition[
             }
             i += 1
         }
+        // don't forget the last one
+        if (srcSet.size > 0 && dstSet.size > 0) {
+            hyperedge.srcIds = srcSet
+            hyperedge.dstIds = dstSet
+            hyperedge.attr = data(currentId)
+            newData(currentId) = f(hyperedge)
+        }
         this.withData(newData)
     }
 
     def map[ED2: ClassTag](iter: Iterator[(HyperedgeId, ED2)])
     : FlatHyperedgePartition[ED2, VD] = {
+        val seq = iter.toIndexedSeq
         val newData = new HyperXOpenHashMap[HyperedgeId, ED2]()
-        iter.foreach{i =>
-            assert(data.hasKey(i._1))
+        seq.foreach{i =>
+//            assert(data.hasKey(i._1))
             newData(i._1) = i._2
         }
-        assert(newData.size == data.size)
+//        assert(newData.size == data.size)
         this.withData(newData)
     }
 
@@ -119,11 +139,11 @@ class FlatHyperedgePartition[
     : FlatHyperedgePartition[ED, VD] = {
         val filtered = tupleIterator().filter(t =>
                 vpred(t.srcAttr) && vpred(t.dstAttr) && hpred(t)
-        ).zipWithIndex
+        )
         val builder = new FlatHyperedgePartitionBuilder[ED, VD]()
         filtered.foreach{h =>
-            builder.add(h._1.srcAttr.keySet, h._1.dstAttr.keySet,
-                h._2, h._1.attr)
+            builder.add(h.srcAttr.keySet, h.dstAttr.keySet,
+                h.id, h.attr)
         }
         builder.toFlatHyperedgePartition.withVertices(vertices)
                 .withActiveSet(activeSet)
@@ -140,23 +160,27 @@ class FlatHyperedgePartition[
 
     def iterator = new Iterator[Hyperedge[ED]]{
         private[this] val hyperedge = new Hyperedge[ED]()
-        private[impl] var pos = 0
+        private[this] var index = 0
+        private[this] var lastPos = 0
 
-        override def hasNext: Boolean = pos < FlatHyperedgePartition.this.size
+        override def hasNext: Boolean = index < FlatHyperedgePartition.this.size
 
+        // the hyperedgeId is not exposed as it doesn't matter to the outer scope
         override def next(): Hyperedge[ED] = {
             hyperedge.srcIds = new VertexSet()
             hyperedge.dstIds = new VertexSet()
+            val pos = hIndex.nextPos(lastPos)
+            lastPos = pos + 1
             var i = hIndex._values(pos)
             val currentId = hyperedgeIds(i)
-            while(currentId == hyperedgeIds(i)) {
+            while(i < hyperedgeIds.size && currentId == hyperedgeIds(i)) {
                 val vid = vertexIds(i)
                 if (srcFlags(i)) hyperedge.srcIds.add(vid)
                 else hyperedge.dstIds.add(vid)
                 i += 1
             }
             hyperedge.attr = data(currentId)
-            pos += 1
+            index += 1
             hyperedge
         }
     }
@@ -178,9 +202,9 @@ class FlatHyperedgePartition[
             if (merged.count(r => HyperUtils.is(r._1, currSrcIds) &&
                     HyperUtils.is(r._2, currDstIds)) == 0) {
                 currAttr = outerH.attr
-                val outerPos = outerIter.pos
+//                val outerPos = outerIter.pos
                 val innerIter = iterator
-                innerIter.pos = outerPos + 1
+//                innerIter.pos = outerPos + 1
                 while(innerIter.hasNext) {
                     val inner = innerIter.next()
                     if (HyperUtils.is(inner.srcIds, currSrcIds) &&
@@ -244,7 +268,7 @@ class FlatHyperedgePartition[
             var i = hIndex(hyperedgeId)
             hyperedge.srcIds = new VertexSet
             hyperedge.dstIds = new VertexSet
-            while(hyperedgeId == hyperedgeIds(i)) {
+            while(i < hyperedgeIds.size && hyperedgeId == hyperedgeIds(i)) {
                 if (srcFlags(i)) hyperedge.srcIds.add(vertexIds(i))
                 else hyperedge.dstIds.add(vertexIds(i))
                 i += 1

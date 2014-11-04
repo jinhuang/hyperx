@@ -1,7 +1,7 @@
 package org.apache.spark.hyperx
 
-import org.apache.spark.hyperx.impl.{HyperedgePartition, HypergraphImpl, ShippableVertexPartition}
-import org.apache.spark.hyperx.partition.{PlainPartition, PartitionStrategy}
+import org.apache.spark.hyperx.impl.{FlatHyperedgePartition, HypergraphImpl, ShippableVertexPartition}
+import org.apache.spark.hyperx.partition.{PartitionStrategy, PlainPartition}
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.{Logging, SparkContext}
 
@@ -53,7 +53,7 @@ object HypergraphLoader extends Logging {
         vertexLevel: StorageLevel = StorageLevel.MEMORY_ONLY)
     : Hypergraph[Int,Int]= {
         val hyperedges =
-            sc.objectFile[(PartitionId, HyperedgePartition[Int, Int])](
+            sc.objectFile[(PartitionId, FlatHyperedgePartition[Int, Int])](
                 hyperedgePath, part)
         val vertices =
             sc.objectFile[ShippableVertexPartition[Int]](vertexPath, part)

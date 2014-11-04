@@ -32,6 +32,11 @@ class HyperedgeTuple[VD: ClassTag, ED: ClassTag] {
     var attr: ED = _
 
     /**
+     * Only for the internal usage within a partition
+     */
+    var id: HyperedgeId = _
+
+    /**
      * Given one vertex set in the edge return the other vertex set attributes
      * @param vids the vertex set one of the two sets on the edge
      * @return the attributes for the other vertex set on the edge

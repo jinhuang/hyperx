@@ -43,14 +43,14 @@ object BetweennessCentrality extends Logging {
             else {
                 makeBCMap()
             }
-        ).mapHyperedges(h => makeHyperedgeAttr())
+        )
 
         val initialMsg = makeBCMap()
 
         def vertexProgram(id: VertexId, attr: BCMap, msg: BCMap): BCMap =
             mergeMap(attr, msg)
 
-        def hyperedgeProgram(tuple: HyperedgeTuple[BCMap, Map[VertexId, Int]])
+        def hyperedgeProgram(tuple: HyperedgeTuple[BCMap, ED])
         : Iterator[(VertexId, BCMap)] = {
             val newAttr = mergeMap(
                 tuple.srcAttr.map(attr => increase(attr._2, attr._1)).iterator)
@@ -96,8 +96,8 @@ object BetweennessCentrality extends Logging {
     private[hyperx] def makeBCMap(x: (VertexId, (Int, Int, HyperAttr[Int]))*) =
         Map(x: _*)
 
-    private def makeHyperedgeAttr(x: (VertexId, Int)*) =
-        Map(x: _*)
+//    private def makeHyperedgeAttr(x: (VertexId, Int)*) =
+//        Map(x: _*)
 
     private def increase(map: BCMap, id: VertexId)
     : BCMap = {

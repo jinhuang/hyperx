@@ -549,7 +549,8 @@ object VertexRDD {
         vertexPartitioner: Partitioner): RDD[RoutingTablePartition] = {
         val vid2pid = hyperedges.partitionsRDD.mapPartitions(_.flatMap(
             Function.tupled(
-                RoutingTablePartition.hyperedgePartitionToMsgs(_, _))))
+//                RoutingTablePartition.hyperedgePartitionToMsgs(_, _))))
+                  RoutingTablePartition.flatHyperedgePartitionToMsgs(_, _))))
                 .setName("VertexRDD.createRoutingTables - vid2pid (aggregation)")
 
         val numHyperedgePartitions = hyperedges.partitions.size

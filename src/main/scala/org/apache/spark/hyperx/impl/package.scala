@@ -9,4 +9,5 @@ import org.apache.spark.hyperx.util.collection.HyperXOpenHashSet
  */
 package object impl {
     private[hyperx] type VertexIdToIndexMap = HyperXOpenHashSet[VertexId]
+
 }

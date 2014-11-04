@@ -123,6 +123,21 @@ object Analytics extends Logging {
 
                 sc.stop()
 
+            case "test" =>
+                val sc = new SparkContext(conf.setAppName("Testing (" +
+                        fname + ")"))
+
+                val hypergraph = loadHypergraph(sc, fname, vertexInput,
+                    fieldSeparator, weighted, numPart, inputMode,
+                    partitionStrategy, hyperedgeStorageLevel, vertexStorageLevel)
+                        .cache()
+
+                val testHypergraph = hypergraph.mapTuples(h => (h.id, 0)).cache()
+
+                val sum = testHypergraph.hyperedges.map(h => h.attr).reduce(_ + _)
+
+                logInfo("Result " + sum)
+
             case "part" =>
                 println("==========================")
                 println("| Partitioning |")

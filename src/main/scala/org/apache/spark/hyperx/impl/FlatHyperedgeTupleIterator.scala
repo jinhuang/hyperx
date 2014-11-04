@@ -1,5 +1,6 @@
 package org.apache.spark.hyperx.impl
 
+import org.apache.spark.Logging
 import org.apache.spark.hyperx.util.collection.HyperXOpenHashMap
 import org.apache.spark.hyperx.{Hyperedge, HyperedgeTuple, VertexId}
 
@@ -9,19 +10,24 @@ private[impl]
 class FlatHyperedgeTupleIterator[VD: ClassTag, ED: ClassTag](
     val hyperedgePartition: FlatHyperedgePartition[ED, VD],
     val includeSrc: Boolean, val includeDst: Boolean)
-    extends Iterator[HyperedgeTuple[VD, ED]]{
+    extends Iterator[HyperedgeTuple[VD, ED]] with Logging{
 
-    private var pos = 0
+    private var index = 0
+    private var lastPos = 0
 
-    override def hasNext: Boolean = pos < hyperedgePartition.size
+    override def hasNext: Boolean = {
+        index < hyperedgePartition.size
+    }
 
     override def next() = {
         val tuple = new HyperedgeTuple[VD, ED]
         tuple.srcAttr = new HyperXOpenHashMap[VertexId, VD]()
         tuple.dstAttr = new HyperXOpenHashMap[VertexId, VD]()
+        val pos = hyperedgePartition.hIndex.nextPos(lastPos)
+        lastPos = pos + 1
         var i = hyperedgePartition.hIndex._values(pos)
         val currentId = hyperedgePartition.hyperedgeIds(i)
-        while(currentId == hyperedgePartition.hyperedgeIds(i)) {
+        while(i < hyperedgePartition.hyperedgeIds.size && currentId == hyperedgePartition.hyperedgeIds(i)) {
             val vid = hyperedgePartition.vertexIds(i)
             if (hyperedgePartition.srcFlags(i)) {
                 if (includeSrc) {
@@ -38,8 +44,9 @@ class FlatHyperedgeTupleIterator[VD: ClassTag, ED: ClassTag](
             }
             i += 1
         }
+        tuple.id = currentId
         tuple.attr = hyperedgePartition.data(currentId)
-        pos += 1
+        index += 1
         tuple
     }
 }
@@ -50,7 +57,7 @@ class ReusingFlatHyperedgeTupleIterator[VD: ClassTag, ED: ClassTag](
     val hyperedgeIter: Iterator[Hyperedge[ED]],
     val hyperedgePartition: FlatHyperedgePartition[ED, VD],
     val includeSrc: Boolean, val includeDst: Boolean)
-    extends Iterator[HyperedgeTuple[VD, ED]]  {
+    extends Iterator[HyperedgeTuple[VD, ED]] with Logging{
 
     private val tuple = new HyperedgeTuple[VD, ED]
 

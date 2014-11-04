@@ -168,7 +168,7 @@ object HyperPregel extends Logging {
             val rCount = Array.fill(k)(sc.accumulator(0))
             val cCount = Array.fill(k)(sc.accumulator(0))
             val mrStart = System.currentTimeMillis()
-            logInfo("HYPERX DEBUGGING: mrt starts" )
+//            logInfo("HYPERX DEBUGGING: mrt starts" )
             msg = h.mapReduceTuplesP(sc, msT, mdT, msdT, mddT, cT, mcT, rT,
                 sT, zT, mStart, cStart, rStart, sStart, zStart,
                 mComplete, cComplete, rComplete, rCount, cCount, sComplete,

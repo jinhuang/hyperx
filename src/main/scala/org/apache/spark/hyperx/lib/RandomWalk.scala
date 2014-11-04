@@ -41,11 +41,9 @@ object RandomWalk extends Logging {
         val walkHypergraph: Hypergraph[Double, HyperAttr[Double]] = hypergraph
             .outerJoinVertices(hypergraph.outIncidents){(vid, vdata, deg) =>
                 deg.getOrElse[Int](0)}
-            .mapTuples(e => HyperUtils.divide(1.0, e.srcAttr))
+            .mapTuples(h => (h.id, HyperUtils.divide(1.0, h.srcAttr)))
             .mapVertices((id, attr) => if (startSet.contains(id)) 1.0 else 0.0)
             .cache()
-
-        logInfo("Walking...")
 
         def vertexProg(id: VertexId, attr: Double, msgSum: Double): Double =
             resetProb + (1.0 - resetProb) * msgSum

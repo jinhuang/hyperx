@@ -21,7 +21,7 @@ class HypergraphOps[VD: ClassTag, ED: ClassTag](hypergraph: Hypergraph[VD,
         ED]) extends Serializable {
 
     /** The number of hyperedges in the hypergraph. */
-    @transient lazy val numHyperedges: Long = hypergraph.hyperedges.partitionsRDD.map(p => p._2.data.length).reduce(_ + _)
+    @transient lazy val numHyperedges: Long = hypergraph.hyperedges.partitionsRDD.map(p => p._2.data.size).reduce(_ + _)
 
     /** The number of vertices in the hypergraph. */
     @transient lazy val numVertices: Long = hypergraph.vertices.count()
