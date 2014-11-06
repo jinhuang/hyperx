@@ -27,12 +27,19 @@ object LabelPropagation extends Logging {
         val lpHypergraph = hypergraph.mapVertices((id, _) => id)
 
         def hyperedgeProgram(h: HyperedgeTuple[VertexId, ED]) = {
-            h.dstAttr.map(attr =>
-                (attr._1, h.srcAttr.map(src =>
-                    (src._2,1.0 / h.dstAttr.size)).toMap)).iterator ++
-            h.srcAttr.map(attr =>
-                (attr._1, h.dstAttr.map(dst =>
-                    (dst._2, 1.0 / h.srcAttr.size)).toMap)).iterator
+//            h.dstAttr.map(attr =>
+//                (attr._1, h.srcAttr.map(src =>
+//                    (src._2,1.0 / h.dstAttr.size)).toMap)).iterator ++
+//            h.srcAttr.map(attr =>
+//                (attr._1, h.dstAttr.map(dst =>
+//                    (dst._2, 1.0 / h.srcAttr.size)).toMap)).iterator
+            // exchange labels between source and destinations
+            val srcSize = h.srcAttr.size
+            val dstSize = h.dstAttr.size
+            val srcMap = h.srcAttr.map(v => (v._2, 1.0 / dstSize)).toMap
+            val dstMap = h.dstAttr.map(v => (v._2, 1.0 / srcSize)).toMap
+            h.dstAttr.keySet.iterator.map(v => (v, srcMap)) ++
+            h.srcAttr.keySet.iterator.map(v => (v, dstMap))
         }
 
         def mergeMessage(count1: Map[VertexId, Double],

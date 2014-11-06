@@ -17,6 +17,7 @@
 
 package org.apache.spark.hyperx.impl
 
+import org.apache.spark.Logging
 import org.apache.spark.hyperx.{PartitionId, VertexId}
 import org.apache.spark.util.collection.{BitSet, PrimitiveVector}
 
@@ -33,7 +34,7 @@ class VertexAttributeBlock[VD: ClassTag](val vids: Array[VertexId],
 }
 
 private[hyperx]
-object ShippableVertexPartition {
+object ShippableVertexPartition extends Logging{
     /** Construct a `ShippableVertexPartition` from the given vertices
       * without any routing table. */
     def apply[VD: ClassTag](iter: Iterator[(VertexId, VD)])
@@ -58,7 +59,7 @@ object ShippableVertexPartition {
     import scala.language.implicitConversions
 
     /**
-     * Implicit conversion to allow invoking `VertexPartitionBase` operations
+     * Implicit conversion to allow invoking ``VertexPartitionBase`` operations
      * directly on a `ShippableVertexPartition`.
      */
     implicit def shippablePartitionToOps[VD: ClassTag](

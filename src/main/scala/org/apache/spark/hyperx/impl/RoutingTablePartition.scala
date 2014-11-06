@@ -107,9 +107,6 @@ object RoutingTablePartition {
         position: Byte): RoutingTableMessage = {
         val positionUpper2 = position << 30
         val pidLower30 = pid & 0x3FFFFFFF
-        if (pid < 0 || (positionUpper2 | pidLower30) == 2147483647 || (positionUpper2 | pidLower30) == -1073741825) {
-            println("HYPERX DEBUGGING: caught! vid %d pid %d position %d".format(vid, pid, position.toInt))
-        }
         (vid, positionUpper2 | pidLower30)
     }
 
@@ -126,10 +123,6 @@ object RoutingTablePartition {
             val vid = vidFromMessage(msg)
             val pid = pidFromMessage(msg)
             val position = positionFromMessage(msg)
-            // debug
-            if (pid >= numEdgePartitions) {
-                println("HYPERX DEBUGGING: Caught! msg %s vid %d pid %d".format("(" + msg._1.toString + "," + msg._2.toString + ")", vid, pid) )
-            }
             pid2vid(pid) += vid
             srcFlags(pid) += (position & 0x1) != 0
             dstFlags(pid) += (position & 0x2) != 0

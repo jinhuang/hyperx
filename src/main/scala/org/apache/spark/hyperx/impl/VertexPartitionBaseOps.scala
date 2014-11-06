@@ -65,7 +65,9 @@ VertexPartitionBaseOpsConstructor]
         var i = self.mask.nextSetBit(0)
         while (i >= 0) {
             newValues(i) = f(self.index.getValue(i), self.values(i))
+
             i = self.mask.nextSetBit(i + 1)
+
         }
         this.withValues(newValues)
     }
@@ -255,7 +257,8 @@ VertexPartitionBaseOpsConstructor]
 
     def aggregateUsingIndexCP[VD2: ClassTag](
         iter: Iterator[Product2[VertexId, VD2]], reduceFunc: (VD2, VD2) => VD2,
-        acc: Accumulator[Int], startAcc: Accumulator[Long], completeAcc: Accumulator[Long], dAcc: Accumulator[Int])
+        acc: Accumulator[Int], startAcc: Accumulator[Long],
+        completeAcc: Accumulator[Long], dAcc: Accumulator[Int])
     : Self[VD2] = {
         startAcc += System.currentTimeMillis()
 
@@ -287,7 +290,8 @@ VertexPartitionBaseOpsConstructor]
 
     def aggregateUsingIndexP[VD2: ClassTag](
         iter: Iterator[Product2[VertexId, VD2]], reduceFunc: (VD2, VD2) => VD2,
-        tracker: Accumulator[Int], startTracker: Accumulator[Long], completeTracker: Accumulator[Long])
+        tracker: Accumulator[Int], startTracker: Accumulator[Long],
+        completeTracker: Accumulator[Long])
     : Self[VD2] = {
         val start = System.currentTimeMillis()
         startTracker += start

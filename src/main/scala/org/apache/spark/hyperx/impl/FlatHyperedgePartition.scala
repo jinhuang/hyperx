@@ -16,7 +16,8 @@ import scala.reflect.ClassTag
  * hyperedge index: hyperedge id -> the first index in the tuple arrays that
  * corresponds to the hyperedge
  *
- * todo: consider merge data and hIndex to avoid storing hyperedgeIds twice
+ * note: merging data and hIndex will NOT reduce the memory consumption, because
+ * Tuple2 has a significant overhead
  *
  */
 private[hyperx]

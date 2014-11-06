@@ -7,15 +7,72 @@ object Profiler {
     type HyperedgeId = Int
 
     def main(args: Array[String]): Unit = {
-        val map = new HyperXOpenHashMap[HyperedgeId, Int]()
-        (0 until 10).foreach(i => map.update(i * 2,i))
-        val start = System.currentTimeMillis()
-        var pos = 0
-        (0 until 10).foreach{i =>
-            val nextPos = map.nextPos(pos)
-            pos = nextPos + 1
-            println(map._values(nextPos))
+
+
+        // comparing two maps with map of a two-tuple
+//        val mapA = new HyperXOpenHashMap[Int, Int]()
+//        val mapB = new HyperXOpenHashMap[Int, Int]()
+        val map = new HyperXOpenHashMap[Int, (Int, Int)]()
+
+        (0 until 10000000).foreach{i =>
+//            mapA.update(i, i + 1)
+//            mapB.update(i, i + 1)
+            map.update(i, (i + 1, i + 2))
         }
+
+//        val ret = mapA.map(i => i._2 - i._1).reduce(_ + _) + mapB.map(i => i._2 - i._1).reduce(_ + _)
+        val ret = map.map(i => i._2._2 - i._2._1).reduce(_ + _)
+        println(ret)
+        val stop = readLine()
+        // comparing arrays and hashMap
+//        val map = new HyperXOpenHashMap[VertexId, Int]()
+//        val keyVec = new HyperXPrimitiveVector[VertexId]()
+//        val valVec = new HyperXPrimitiveVector[Int]()
+//        (0 until 10000000).foreach{i =>
+//            keyVec += i.toLong
+//            valVec += i
+//        }
+////        val ret = map.map(i => i._2).reduce(_ + _)
+//        val keyAry = keyVec.trim().array
+//        val valAry = valVec.trim().array
+//        println(keyAry.size + " " + valAry.size)
+//        val stop = readLine()
+        // comparing arrays and sets
+//        val inputFile = "/run/media/soone/Data/hyperx/datasets/exp/hyperx/lastfm_similars"
+//        val source = Source.fromFile(inputFile)
+//        val lines = source.getLines()
+//
+//        val data = lines.filterNot(s => s.isEmpty || s.startsWith("#") || s.split(":").length < 2).map{line =>
+//            val ary = line.split(":").map(_.trim).filter(_.nonEmpty)
+////            val src = new HyperXPrimitiveVector[VertexId]()
+//            val src = new VertexSet()
+//            ary(0).split(" ").map(_.trim).foreach(v => src.add(v.toLong))
+//            val dst = new VertexSet()
+//            ary(1).split(" ").map(_.trim).foreach(v => dst.add(v.toLong))
+//            (src, dst)
+////            ary(0).split(" ").map(_.trim).foreach(v => src += v.toLong)
+////            val dst = new HyperXPrimitiveVector[VertexId]()
+////            ary(1).split(" ").map(_.trim).foreach(v => dst += v.toLong)
+////            (src.trim().array, dst.trim().array)
+//        }.toIndexedSeq
+//
+//        val src = data.map(_._1)
+//        val dst = data.map(_._2)
+//
+//        println("data length: " + src.size + " " + dst.size)
+//
+//        val stop = readLine()
+//        println("data length: " + data.size)
+//        source.close()
+//        val map = new HyperXOpenHashMap[HyperedgeId, Int]()
+//        (0 until 10).foreach(i => map.update(i * 2,i))
+//        val start = System.currentTimeMillis()
+//        var pos = 0
+//        (0 until 10).foreach{i =>
+//            val nextPos = map.nextPos(pos)
+//            pos = nextPos + 1
+//            println(map._values(nextPos))
+//        }
 //        (0 until 1000000).foreach {i =>
 //            val tmp = new VertexSet
 //            (0 until 100).foreach{j => tmp.add(j.toLong)}
@@ -24,11 +81,9 @@ object Profiler {
 //        (0 until 10000).foreach{i =>
 //            val test = map.nth(i)
 //        }
-        println(System.currentTimeMillis() - start)
+//        println(System.currentTimeMillis() - start)
 
-//        val inputFile = "/run/media/soone/Data/hyperx/datasets/exp/hyperx/orkut_communities"
-//        val source = Source.fromFile(inputFile)
-//        val lines = source.getLines()
+
 //
 //        val dataCollected = (new HyperXPrimitiveVector[HyperedgeId](),
 //                new HyperXPrimitiveVector[VertexId](),

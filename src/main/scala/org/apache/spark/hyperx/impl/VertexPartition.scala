@@ -17,13 +17,14 @@
 
 package org.apache.spark.hyperx.impl
 
+import org.apache.spark.Logging
 import org.apache.spark.hyperx.VertexId
 import org.apache.spark.util.collection.BitSet
 
 import scala.reflect.ClassTag
 
 /** Forked from GraphX 2.10, modified by Jin Huang */
-private[hyperx] object VertexPartition {
+private[hyperx] object VertexPartition extends Logging {
     /** Construct a `VertexPartition` from the given vertices. */
     def apply[VD: ClassTag](iter: Iterator[(VertexId, VD)])
     : VertexPartition[VD] = {

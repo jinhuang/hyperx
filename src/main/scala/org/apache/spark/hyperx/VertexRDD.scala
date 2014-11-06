@@ -28,7 +28,7 @@ class VertexRDD[@specialized VD: ClassTag](
     val partitionsRDD: RDD[ShippableVertexPartition[VD]],
     val targetStorageLevel: StorageLevel = StorageLevel.MEMORY_ONLY)
     extends RDD[(VertexId, VD)](partitionsRDD.context,
-    List(new OneToOneDependency(partitionsRDD))) {
+    List(new OneToOneDependency(partitionsRDD))) with Logging {
 
 //    require(partitionsRDD.partitioner.isDefined)
 
@@ -114,8 +114,9 @@ class VertexRDD[@specialized VD: ClassTag](
      *         of the entries in the
      *         original VertexRDD
      */
-    def mapValues[VD2: ClassTag](f: VD => VD2): VertexRDD[VD2] =
+    def mapValues[VD2: ClassTag](f: VD => VD2): VertexRDD[VD2] = {
         this.mapVertexPartitions(_.map((vid, attr) => f(attr)))
+    }
 
     /**
      * Maps each vertex attribute, additionally supplying the vertex ID.
@@ -128,8 +129,9 @@ class VertexRDD[@specialized VD: ClassTag](
      *         original VertexRDD.  The resulting VertexRDD retains the same
      *         index.
      */
-    def mapValues[VD2: ClassTag](f: (VertexId, VD) => VD2): VertexRDD[VD2] =
+    def mapValues[VD2: ClassTag](f: (VertexId, VD) => VD2): VertexRDD[VD2] = {
         this.mapVertexPartitions(_.map(f))
+    }
 
     /**
      * Hides vertices that are the same between `this` and `other`; for
@@ -435,7 +437,7 @@ class VertexRDD[@specialized VD: ClassTag](
 /**
  * The VertexRDD singleton is used to construct VertexRDDs.
  */
-object VertexRDD {
+object VertexRDD extends Logging {
 
     /**
      * Construct a standalone `VertexRDD`, which is not set up for efficient

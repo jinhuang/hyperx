@@ -1,23 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <module org.jetbrains.idea.maven.project.MavenProjectsManager.isMavenModule="true" type="JAVA_MODULE" version="4">
-  <component name="FacetManager">
-    <facet type="scala" name="Scala">
-      <configuration>
-        <option name="compilerLibraryLevel" value="Project" />
-        <option name="compilerLibraryName" value="Maven: org.scala-lang:scala-compiler-bundle:2.10.4" />
-        <option name="compilerOptions" value="-feature -language:postfixOps" />
-        <option name="deprecationWarnings" value="true" />
-        <option name="maximumHeapSize" value="1024" />
-        <option name="pluginPaths">
-          <array>
-            <option value="$MAVEN_REPOSITORY$/org/scalamacros/paradise_2.10.4/2.0.1/paradise_2.10.4-2.0.1.jar" />
-          </array>
-        </option>
-        <option name="uncheckedWarnings" value="true" />
-        <option name="vmOptions" value="-Xms1024m" />
-      </configuration>
-    </facet>
-  </component>
+  <component name="FacetManager" />
   <component name="NewModuleRootManager" LANGUAGE_LEVEL="JDK_1_6" inherit-compiler-output="false">
     <output url="file://$MODULE_DIR$/target/classes" />
     <output-test url="file://$MODULE_DIR$/target/test-classes" />
@@ -28,7 +11,6 @@
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
-    <orderEntry type="library" name="Maven: org.scala-lang:scala-library:2.10.4" level="project" />
     <orderEntry type="library" name="Maven: com.google.guava:guava:14.0.1" level="project" />
     <orderEntry type="library" name="Maven: org.apache.spark:spark-core_2.10:1.1.0" level="project" />
     <orderEntry type="library" name="Maven: org.apache.hadoop:hadoop-client:1.0.4" level="project" />
@@ -131,6 +113,7 @@
     <orderEntry type="library" scope="PROVIDED" name="Maven: org.spire-math:spire_2.10:0.7.4" level="project" />
     <orderEntry type="library" scope="PROVIDED" name="Maven: org.spire-math:spire-macros_2.10:0.7.4" level="project" />
     <orderEntry type="library" scope="PROVIDED" name="Maven: org.apache.spark:spark-graphx_2.10:1.1.0" level="project" />
+    <orderEntry type="library" name="Maven: org.scala-lang:scala-library:2.10.4" level="project" />
   </component>
 </module>
 

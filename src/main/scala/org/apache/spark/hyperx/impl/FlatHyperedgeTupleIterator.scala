@@ -27,7 +27,8 @@ class FlatHyperedgeTupleIterator[VD: ClassTag, ED: ClassTag](
         lastPos = pos + 1
         var i = hyperedgePartition.hIndex._values(pos)
         val currentId = hyperedgePartition.hyperedgeIds(i)
-        while(i < hyperedgePartition.hyperedgeIds.size && currentId == hyperedgePartition.hyperedgeIds(i)) {
+        while(i < hyperedgePartition.hyperedgeIds.size &&
+                currentId == hyperedgePartition.hyperedgeIds(i)) {
             val vid = hyperedgePartition.vertexIds(i)
             if (hyperedgePartition.srcFlags(i)) {
                 if (includeSrc) {

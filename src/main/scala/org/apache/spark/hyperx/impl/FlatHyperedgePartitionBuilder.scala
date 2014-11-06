@@ -62,8 +62,12 @@ class FlatHyperedgePartitionBuilder[
 
         val builtIndex = if (!withIndex) null else makeIndex
 
+        // this was a notorious bug that sucked more than 2 hours to hunt down,
+        // the mistake is using allVertices.size instead of allVertices.capacity,
+        // which leads the values in the vertex partition to be of length much
+        // smaller than it should be!
         val vertices = new VertexPartition(
-            allVertices, new Array[VD](allVertices.size), allVertices.getBitSet
+            allVertices, new Array[VD](allVertices.capacity), allVertices.getBitSet
         )
 
         new FlatHyperedgePartition(vertexIds.trim().array,

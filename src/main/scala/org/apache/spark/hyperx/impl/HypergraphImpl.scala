@@ -84,7 +84,8 @@ class HypergraphImpl[VD: ClassTag, ED: ClassTag] protected(
         val vd2Tag = classTag[VD2]
         if (vdTag == vd2Tag) {
             vertices.cache()
-            val newVerts = vertices.mapVertexPartitions(_.map(map)).cache()
+            val newVerts = vertices.mapVertexPartitions{p =>
+                p.map(map)}.cache()
             val changedVerts = vertices.asInstanceOf[VertexRDD[VD2]]
                     .diff(newVerts)
             val newReplicatedVertexView = replicatedVertexView
@@ -136,18 +137,14 @@ class HypergraphImpl[VD: ClassTag, ED: ClassTag] protected(
         f: (PartitionId, Iterator[HyperedgeTuple[VD, ED]]) =>
                 Iterator[(HyperedgeId, ED2)])
     : Hypergraph[VD, ED2] = {
-        var start = System.currentTimeMillis()
         val mapUsesSrcAttr = accessesVertexAttr(f, "srcAttr")
         val mapUsesDstAttr = accessesVertexAttr(f, "dstAttr")
 
         replicatedVertexView.upgrade(vertices, mapUsesSrcAttr, mapUsesDstAttr)
-        logInfo("HYPERX DEBUGGING: map tuples upgrade " + (System.currentTimeMillis() - start))
-        start = System.currentTimeMillis()
         val newHyperedges = replicatedVertexView.hyperedges
             .mapHyperedgePartitions{(pid, part) =>
                 part.map{f(pid, part.tupleIterator(mapUsesSrcAttr, mapUsesDstAttr))}
             }
-        logInfo("HYPERX DEBUGGING: map tuples map partitions " + (System.currentTimeMillis() - start))
         new HypergraphImpl(vertices, replicatedVertexView.withHyperedges(newHyperedges))
     }
 
@@ -412,7 +409,7 @@ class HypergraphImpl[VD: ClassTag, ED: ClassTag] protected(
     protected def this() = this(null, null)
 }
 
-object HypergraphImpl {
+object HypergraphImpl extends Logging {
 
     /** Create a hypergraph from hyperedges, settings referenced vertices to
     `defaultVertexAttr` **/

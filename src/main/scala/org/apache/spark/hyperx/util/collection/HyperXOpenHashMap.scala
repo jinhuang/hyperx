@@ -113,7 +113,10 @@ class HyperXOpenHashMap[@specialized(Long, Int) K: ClassTag,
 
     /** Set the value for a key */
     def setMerge(k: K, v: V, mergeF: (V, V) => V) {
-        val pos = keySet.addWithoutResize(k)
+//        val pos = keySet.addWithoutResize(k)
+        keySet.addWithoutResize(k)
+        keySet.rehashIfNeeded(k, grow, move)
+        val pos = keySet.getPos(k)
         val ind = pos & HyperXOpenHashSet.POSITION_MASK
         if ((pos & HyperXOpenHashSet.NONEXISTENCE_MASK) != 0) {
             // if first add
@@ -121,7 +124,7 @@ class HyperXOpenHashMap[@specialized(Long, Int) K: ClassTag,
         } else {
             _values(ind) = mergeF(_values(ind), v)
         }
-        keySet.rehashIfNeeded(k, grow, move)
+//        keySet.rehashIfNeeded(k, grow, move)
         _oldValues = null
     }
 
