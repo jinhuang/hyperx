@@ -16,6 +16,8 @@ case class Hyperedge[@specialized(Char, Int, Boolean, Byte, Long, Float,
                 var attr: ED = null.asInstanceOf[ED])
         extends Serializable {
 
+    var id: HyperedgeId = null.asInstanceOf[HyperedgeId]
+
     def this() = {
         this(null.asInstanceOf[VertexSet], null.asInstanceOf[VertexSet])
     }

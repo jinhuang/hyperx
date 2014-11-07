@@ -181,6 +181,7 @@ class FlatHyperedgePartition[
                 i += 1
             }
             hyperedge.attr = data(currentId)
+            hyperedge.id = currentId
             index += 1
             hyperedge
         }

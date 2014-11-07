@@ -1,5 +1,9 @@
 package org.apache.spark.hyperx
 
+import org.apache.spark.hyperx.util.collection.HyperXPrimitiveVector
+import org.apache.spark.mllib.linalg.{Matrices, Matrix, Vectors}
+import org.apache.spark.mllib.linalg.distributed.{IndexedRow, IndexedRowMatrix}
+import org.apache.spark.rdd.RDD
 import org.apache.spark.util.collection.BitSet
 
 import scala.collection.mutable
@@ -40,6 +44,9 @@ class HypergraphOps[VD: ClassTag, ED: ClassTag](hypergraph: Hypergraph[VD,
     @transient lazy val inIncidents: VertexRDD[Int] =
         incidentRDD(HyperedgeDirection.In).setName("HypergraphOps.inIncidents")
 
+    @transient lazy val inHDegrees: RDD[(HyperedgeId, Int)] =
+        hyperedgeDegreeRDD(HyperedgeDirection.In).setName("HypergraphOps.inHDegrees")
+
     /**
      * The out-degree of each vertex in the hypergraph
      * @note this could be inefficient as we need to union the sets of
@@ -55,6 +62,10 @@ class HypergraphOps[VD: ClassTag, ED: ClassTag](hypergraph: Hypergraph[VD,
         incidentRDD(HyperedgeDirection.Out).setName("" +
             "HypergraphOps.outIncidents")
 
+    @transient lazy val outHDegrees: RDD[(HyperedgeId, Int)] =
+        hyperedgeDegreeRDD(HyperedgeDirection.Out).setName("HypergraphOps.outHDegrees")
+
+
     /**
      * The degree of each vertex in the graph
      * @note this could be inefficient as we need to union the sets of
@@ -67,6 +78,26 @@ class HypergraphOps[VD: ClassTag, ED: ClassTag](hypergraph: Hypergraph[VD,
     @transient lazy val incidents: VertexRDD[Int] =
         incidentRDD(HyperedgeDirection.Either).setName(
             "HypergraphOps.incidents")
+
+
+    @transient lazy val hDegrees: RDD[(HyperedgeId, Int)] =
+        hyperedgeDegreeRDD(HyperedgeDirection.Either).setName("HypergraphOps.hDegrees")
+
+    @transient lazy val incidentMatrix: IndexedRowMatrix =
+        evaluateIncidentMatrix()
+
+    @transient lazy val vertexDegreeMatrix: IndexedRowMatrix =
+        evaluateWeightedDegreesMatrix()
+
+    @transient lazy val hyperedgeDegreeMatrix: IndexedRowMatrix =
+        evaluateHDegreesMatrix()
+
+    @transient lazy val hyperedgeWeightMatrix: IndexedRowMatrix =
+        evaluateWeightMatrix()
+
+    @transient lazy val laplacianMatrix: IndexedRowMatrix =
+        evaluateLaplacianMatrix()
+
 
     /**
      * Collect the neighbor vertex ids for each vertex
@@ -379,6 +410,111 @@ class HypergraphOps[VD: ClassTag, ED: ClassTag](hypergraph: Hypergraph[VD,
         hypergraph.mapReduceTuples[Int]({tuple =>
             incidentIterator(tuple, hyperedgeDirection)
         }, _ + _)
+    }
+
+    private def hyperedgeDegreeRDD(hyperedgeDirection: HyperedgeDirection):
+    RDD[(HyperedgeId, Int)] = {
+        hypergraph.hyperedges.zipWithUniqueId().map{h =>
+            hyperedgeDirection match {
+                case HyperedgeDirection.In =>
+                    (h._2.toInt, h._1.srcIds.size)
+                case HyperedgeDirection.Out =>
+                    (h._2.toInt, h._1.dstIds.size)
+                case HyperedgeDirection.Both | HyperedgeDirection.Either =>
+                    (h._2.toInt, h._1.srcIds.size + h._1.dstIds.size)
+            }
+        }
+    }
+
+    private def evaluateIncidentMatrix(): IndexedRowMatrix = {
+        val idH = hypergraph.assignHyperedgeId()
+        val vertexIncident = idH.mapReduceTuples[Array[HyperedgeId]]({ t =>
+            (t.srcAttr.keySet.iterator ++ t.dstAttr.keySet.iterator).map(v => (v, Array(t.attr)))
+        }, _ ++ _).map{v =>
+            new IndexedRow(v._1, Vectors.sparse(numHyperedges.toInt, v._2, Array.fill(v._2.size)(1.0)))
+        }
+        new IndexedRowMatrix(vertexIncident)
+    }
+
+    private def evaluateWeightedDegreesMatrix(): IndexedRowMatrix = {
+        val doubleH = hypergraph.toDoubleWeight()
+        val weightedDegrees = doubleH.mapReduceTuples[Double]({t =>
+            (t.srcAttr.keySet.iterator ++ t.dstAttr.keySet.iterator).map(v => (v, t.attr))
+        }, _ + _).map{v =>
+            new IndexedRow(v._1, Vectors.sparse(numVertices.toInt, Array(v._1.toInt), Array(v._2)))
+        }
+        new IndexedRowMatrix(weightedDegrees)
+    }
+
+    private def evaluateHDegreesMatrix(): IndexedRowMatrix = {
+        val idH = hypergraph.assignHyperedgeId()
+        val hyperedgeDegrees = idH.hyperedges.map(h =>
+            new IndexedRow(h.attr,
+                Vectors.sparse(numHyperedges.toInt, Array(h.attr), Array(h.srcIds.size + h.dstIds.size))))
+        new IndexedRowMatrix(hyperedgeDegrees)
+    }
+
+    private def evaluateWeightMatrix(): IndexedRowMatrix = {
+        val pair = hypergraph.getHyperedgeIdWeightPair()
+        val idWeight = pair.map(h => new IndexedRow(h._1, Vectors.sparse(numHyperedges.toInt, Array(h._1), Array(h._2))))
+        new IndexedRowMatrix(idWeight)
+    }
+
+    private def evaluateLaplacianMatrix(): IndexedRowMatrix = {
+        val vertex = inverseDiagonalMatrix(vertexDegreeMatrix, 0.5)
+        val hyperedge = inverseDiagonalMatrix(hyperedgeDegreeMatrix, 1)
+        val localVertex = collectMatrix(vertex)
+        val localHyperedge = collectMatrix(hyperedge)
+        val localWeight = collectMatrix(hyperedgeWeightMatrix)
+        val localIncident = collectMatrix(incidentMatrix)
+        val localTranspose = transpose(incidentMatrix)
+        val theta = vertex.multiply(localIncident).multiply(localWeight)
+            .multiply(localHyperedge).multiply(localTranspose)
+            .multiply(localVertex)
+        subtractFromIdentity(theta)
+    }
+
+    private def inverseDiagonalMatrix(matrix: IndexedRowMatrix, exp: Double): IndexedRowMatrix = {
+        val newRows = matrix.rows.map{row =>
+            val ary = row.vector.toArray
+            assert(ary.count(_ > 0.0) == 1)
+            val newVal = 1.0 / Math.pow(ary.filter(_ > 0.0)(0), exp)
+            new IndexedRow(row.index, Vectors.sparse(row.vector.size, Array(row.index.toInt), Array(newVal)))
+        }
+        new IndexedRowMatrix(newRows)
+    }
+
+    private def transpose(matrix: IndexedRowMatrix): Matrix = {
+        val vectors = matrix.rows.map(_.vector).collect()
+        val data = vectors.map(_.toArray).reduce(_ ++ _)
+        Matrices.dense(matrix.numCols().toInt, matrix.numRows().toInt, data)
+    }
+
+    private def subtractFromIdentity(matrix: IndexedRowMatrix): IndexedRowMatrix = {
+        val numRows = matrix.numRows()
+        val numCols = matrix.numCols()
+        assert(numRows == numCols)
+        val ret = matrix.rows.zipWithIndex().map { r =>
+            val nonZeros = r._1.vector.toArray.zipWithIndex.map(v => (v._2, if (v._2 == r._2) 1.0 - v._1 else -v._1)).filter(_._2 > 0.0)
+            val index = new HyperXPrimitiveVector[Int]()
+            val values = new HyperXPrimitiveVector[Double]()
+            nonZeros.foreach{i =>
+                index += i._1
+                values += i._2
+            }
+            new IndexedRow(r._1.index, Vectors.sparse(nonZeros.size, index.trim().array, values.trim().array))
+        }
+        new IndexedRowMatrix(ret)
+    }
+
+    private def collectMatrix(matrix: IndexedRowMatrix): Matrix = {
+        val vectors = matrix.rows.map(_.vector)
+        val numCols = matrix.numCols().toInt
+        val numRows = matrix.numRows().toInt
+        val data = (0 until numCols).map{i =>
+            vectors.map(v => v(i)).collect()
+        }.reduce(_ ++ _)
+        Matrices.dense(numRows, numCols, data)
     }
 
 }

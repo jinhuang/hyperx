@@ -113,10 +113,38 @@ class HypergraphImpl[VD: ClassTag, ED: ClassTag] protected(
         f: (PartitionId, Iterator[Hyperedge[ED]]) => Iterator[(HyperedgeId, ED2)])
     : Hypergraph[VD, ED2] = {
         val newHyperedges = replicatedVertexView.hyperedges
-                .mapHyperedgePartitions((pid, part) =>
+            .mapHyperedgePartitions((pid, part) =>
             part.map(f(pid, part.iterator)))
         new HypergraphImpl(vertices,
             replicatedVertexView.withHyperedges(newHyperedges))
+    }
+
+    override def assignHyperedgeId(): Hypergraph[VD, HyperedgeId] = {
+        val partitionSizes = hyperedges.partitionsRDD.map(p => (p._1, p._2.size)).collect()
+        val pids = partitionSizes.map(_._1).toSet
+        val offsets = partitionSizes.sortBy(_._1)
+            .map(p => (p._1, (0 until p._1).filter(pids).map(i => partitionSizes(i)._2).sum)).toMap
+        mapHyperedges((pid, iter) => iter.map(h => (h.id, offsets(pid) + h.id)))
+    }
+
+    override def getHyperedgeIdWeightPair(): RDD[(HyperedgeId, Double)] = {
+        val partitionSizes = hyperedges.partitionsRDD.map(p => (p._1, p._2.size)).collect()
+        val pids = partitionSizes.map(_._1).toSet
+        val offsets = partitionSizes.sortBy(_._1)
+            .map(p => (p._1, (0 until p._1).filter(pids).map(i => partitionSizes(i)._2).sum)).toMap
+        hyperedges.partitionsRDD.flatMap{p =>
+            p._2.iterator.map(h => (offsets(p._1) + h.id, h.attr match{
+                case d: Double => d
+                case _ => 1.0
+            }))
+        }
+    }
+
+    override def toDoubleWeight(): Hypergraph[VD, Double] = {
+        mapHyperedges((pid, iter) => iter.map(h => (h.id, h.attr match {
+            case d: Double => d
+            case _ => 1.0
+        })))
     }
 
 //    override def mapTuples[ED2: ClassTag](

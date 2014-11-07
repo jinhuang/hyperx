@@ -16,7 +16,6 @@
         <scala.version>2.10.4</scala.version>
         <scala.binary.version>2.10</scala.binary.version>
         <scala.macros.version>2.0.1</scala.macros.version>
-        <session.executionRootDirectory>/home/soone/Factory/scala/hyperx/test</session.executionRootDirectory>
         <spark.version>1.1.0</spark.version>
     </properties>
 
@@ -46,7 +45,7 @@
             <groupId>org.apache.spark</groupId>
             <artifactId>spark-mllib_${scala.binary.version}</artifactId>
             <version>${spark.version}</version>
-            <scope>provided</scope>
+            <scope>compile</scope>
         </dependency>
         <dependency>
             <groupId>org.apache.spark</groupId>
@@ -175,11 +174,6 @@
                         <junitxml>.</junitxml>
                         <filereports>${project.build.directory}/SparkTestSuite.txt</filereports>
                         <stderr/>
-                        <systemProperties>
-                            <java.awt.headless>true</java.awt.headless>
-                            <spark.test.home>${session.executionRootDirectory}</spark.test.home>
-                            <spark.testing>1</spark.testing>
-                        </systemProperties>
                     </configuration>
                     <executions>
                         <execution>

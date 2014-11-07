@@ -138,6 +138,12 @@ Serializable {
         f: (PartitionId, Iterator[Hyperedge[ED]]) => Iterator[(HyperedgeId, ED2)]
     ): Hypergraph[VD, ED2]
 
+    def assignHyperedgeId(): Hypergraph[VD, HyperedgeId]
+
+    def toDoubleWeight(): Hypergraph[VD, Double]
+
+    def getHyperedgeIdWeightPair(): RDD[(HyperedgeId, Double)]
+
     /**
      * Transforms each hyperedge attributes using the map function,
      * passing it the adjacent
