@@ -127,7 +127,7 @@ class HypergraphImpl[VD: ClassTag, ED: ClassTag] protected(
         mapHyperedges((pid, iter) => iter.map(h => (h.id, offsets(pid) + h.id)))
     }
 
-    override def getHyperedgeIdWeightPair(): RDD[(HyperedgeId, Double)] = {
+    override def getHyperedgeIdWeightPair: RDD[(HyperedgeId, Double)] = {
         val partitionSizes = hyperedges.partitionsRDD.map(p => (p._1, p._2.size)).collect()
         val pids = partitionSizes.map(_._1).toSet
         val offsets = partitionSizes.sortBy(_._1)
@@ -140,7 +140,7 @@ class HypergraphImpl[VD: ClassTag, ED: ClassTag] protected(
         }
     }
 
-    override def toDoubleWeight(): Hypergraph[VD, Double] = {
+    override def toDoubleWeight: Hypergraph[VD, Double] = {
         mapHyperedges((pid, iter) => iter.map(h => (h.id, h.attr match {
             case d: Double => d
             case _ => 1.0

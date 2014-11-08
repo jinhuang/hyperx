@@ -1,6 +1,7 @@
 package org.apache.spark.hyperx.lib
 
 import org.apache.spark.hyperx._
+import org.apache.spark.hyperx.util.HyperUtils
 import org.apache.spark.{Accumulator, Logging}
 
 import scala.collection.mutable
@@ -22,32 +23,32 @@ import scala.reflect.ClassTag
 object RandomWalk extends Logging {
 
     def run[VD: ClassTag, ED: ClassTag]( hypergraph: Hypergraph[VD, ED])
-    :Hypergraph[Double, ED] = {
+    :Hypergraph[Double, HyperAttr[Double]] = {
         val num = hypergraph.numVertices
         run(hypergraph, 10, hypergraph.pickRandomVertices(num.toInt))
     }
 
     def run[VD: ClassTag, ED: ClassTag]( hypergraph: Hypergraph[VD, ED],
         num: Int, maxIter: Int)
-    :Hypergraph[Double, ED] = {
+    :Hypergraph[Double, HyperAttr[Double]] = {
         run(hypergraph, maxIter, hypergraph.pickRandomVertices(num))
     }
 
     def run[VD: ClassTag, ED: ClassTag](hypergraph: Hypergraph[VD, ED],
         numIter: Int, startSet: mutable.HashSet[VertexId], resetProb: Double = 0.15)
-    : Hypergraph[Double, ED] = {
+    : Hypergraph[Double, HyperAttr[Double]] = {
 
-        val walkHypergraph: Hypergraph[Double, ED] = hypergraph
+        val walkHypergraph: Hypergraph[Double, HyperAttr[Double]] = hypergraph
             .outerJoinVertices(hypergraph.outIncidents){(vid, vdata, deg) =>
                 deg.getOrElse[Int](0)}
-//            .mapTuples(h => (h.id, HyperUtils.divide(1.0, h.srcAttr)))
+            .mapTuples(h => (h.id, HyperUtils.divide(1.0, h.srcAttr)))
             .mapVertices((id, attr) => if (startSet.contains(id)) 1.0 else 0.0)
             .cache()
 
         def vertexProg(id: VertexId, attr: Double, msgSum: Double): Double =
             resetProb + (1.0 - resetProb) * msgSum
 
-        def hyperedgeProg(hyperedge: HyperedgeTuple[Double, ED],
+        def hyperedgeProg(hyperedge: HyperedgeTuple[Double, HyperAttr[Double]],
             srcAcc: Accumulator[Int], dstAcc: Accumulator[Int],
             srcDAcc: Accumulator[Int], dstDAcc: Accumulator[Int])
         = {
@@ -56,8 +57,8 @@ object RandomWalk extends Logging {
             val srcArray = Array.fill(hyperedge.srcAttr.size)(0)
             val msgVal = hyperedge.srcAttr.zipWithIndex.map{attr =>
                 val start = System.currentTimeMillis()
-//                val ret = attr._1._2 * hyperedge.attr(attr._1._1)
-                val ret = attr._1._2 / hyperedge.srcAttr(attr._1._1)
+                val ret = attr._1._2 * hyperedge.attr(attr._1._1)
+//                val ret = attr._1._2 / hyperedge.srcAttr(attr._1._1)
                 srcArray(attr._2) = (System.currentTimeMillis() - start).toInt
                 ret
             }.sum * 1.0 / dstSize

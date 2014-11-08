@@ -204,10 +204,21 @@ object Analytics extends Logging {
 
                 val maxIter = options.remove("maxIter").map(_.toInt).getOrElse(10)
                 val num= options.remove("numStartVertices").map(_.toInt)
-                        .getOrElse(hypergraph.numVertices.toInt / 1000)
+                        .getOrElse(hypergraph.numVertices.toInt)
 
                 val ret = RandomWalk.run(hypergraph, num, maxIter)
                 ret.vertices.saveAsTextFile(outputPath + "rw")
+                sc.stop()
+
+            case "rwg" =>
+                val sc = new SparkContext(conf.setAppName("Random Walks GraphX (" + fname + ")"))
+
+                val graph = GraphLoader.edgeListFile(sc, fname, false, numPart)
+
+                val maxIter = options.remove("maxIter").map(_.toInt).getOrElse(10)
+                val ret = RandomWalkStarGraph.run(graph, maxIter)
+
+                ret.vertices.saveAsTextFile(outputPath + "rwg")
                 sc.stop()
 
             case "lp" =>

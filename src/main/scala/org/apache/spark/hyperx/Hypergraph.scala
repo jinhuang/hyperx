@@ -140,9 +140,9 @@ Serializable {
 
     def assignHyperedgeId(): Hypergraph[VD, HyperedgeId]
 
-    def toDoubleWeight(): Hypergraph[VD, Double]
+    def toDoubleWeight: Hypergraph[VD, Double]
 
-    def getHyperedgeIdWeightPair(): RDD[(HyperedgeId, Double)]
+    def getHyperedgeIdWeightPair: RDD[(HyperedgeId, Double)]
 
     /**
      * Transforms each hyperedge attributes using the map function,

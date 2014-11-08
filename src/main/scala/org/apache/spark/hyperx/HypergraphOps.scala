@@ -304,7 +304,7 @@ class HypergraphOps[VD: ClassTag, ED: ClassTag](hypergraph: Hypergraph[VD,
         val retSet = new mutable.HashSet[VertexId]
         if (probability > 0.5) {
             hypergraph.vertices.map(_._1).collect().foreach{v =>
-                if (Random.nextInt() < probability) {
+                if (Random.nextDouble() < probability) {
                     retSet.add(v)
                 }
             }
@@ -437,7 +437,7 @@ class HypergraphOps[VD: ClassTag, ED: ClassTag](hypergraph: Hypergraph[VD,
     }
 
     private def evaluateWeightedDegreesMatrix(): IndexedRowMatrix = {
-        val doubleH = hypergraph.toDoubleWeight()
+        val doubleH = hypergraph.toDoubleWeight
         val weightedDegrees = doubleH.mapReduceTuples[Double]({t =>
             (t.srcAttr.keySet.iterator ++ t.dstAttr.keySet.iterator).map(v => (v, t.attr))
         }, _ + _).map{v =>
@@ -455,7 +455,7 @@ class HypergraphOps[VD: ClassTag, ED: ClassTag](hypergraph: Hypergraph[VD,
     }
 
     private def evaluateWeightMatrix(): IndexedRowMatrix = {
-        val pair = hypergraph.getHyperedgeIdWeightPair()
+        val pair = hypergraph.getHyperedgeIdWeightPair
         val idWeight = pair.map(h => new IndexedRow(h._1, Vectors.sparse(numHyperedges.toInt, Array(h._1), Array(h._2))))
         new IndexedRowMatrix(idWeight)
     }
