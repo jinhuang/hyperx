@@ -46,8 +46,7 @@ object HyperPregel extends Logging {
             // to be updated
             h = h.outerJoinVertices(newVerts) {
                 (vid, old,newOpt) => newOpt.getOrElse(old)
-            }
-            h.cache()
+            }.cache()
 
             val oldMsg = msg
             // Hyperedge computation
@@ -62,8 +61,8 @@ object HyperPregel extends Logging {
             // unpersist old hypergraphs, vertices, and messages
             oldMsg.unpersist(blocking = false)
             newVerts.unpersist(blocking = false)
-            prevH.unpersistVertices(blocking = true)
-            prevH.hyperedges.unpersist(blocking = true)
+            prevH.unpersistVertices(blocking = false)
+            prevH.hyperedges.unpersist(blocking = false)
             i += 1
         }
         h
@@ -123,7 +122,7 @@ object HyperPregel extends Logging {
             // particular algorithm
             val innerStart = System.currentTimeMillis()
             val newVerts = h.vertices.innerJoin(msg)(vprog).cache()
-            newVerts.count()
+//            newVerts.count()
             prevH = h
             val inner = System.currentTimeMillis() - innerStart
 
@@ -135,7 +134,6 @@ object HyperPregel extends Logging {
             h = h.outerJoinVertices(newVerts) {
                 (vid, old,newOpt) => newOpt.getOrElse(old)
             }.cache()
-            h.hyperedges.foreachPartition(x => {})
             val outer = System.currentTimeMillis() - outerStart
 
             val oldMsg = msg

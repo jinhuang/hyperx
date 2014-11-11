@@ -391,11 +391,10 @@ class VertexRDD[@specialized VD: ClassTag](
       * hyperedge partitions. */
     private[hyperx] def shipVertexAttributes(shipSrc: Boolean,shipDst: Boolean)
     : RDD[(PartitionId, VertexAttributeBlock[VD])] = {
-        partitionsRDD.mapPartitionsWithIndex((i, part) =>
+        partitionsRDD.mapPartitions(part =>
             part.flatMap{p =>
-            val ret = p.shipVertexAttributes(shipSrc,shipDst)
-            ret
-        }, preservesPartitioning = true)
+            p.shipVertexAttributes(shipSrc,shipDst)
+        })
     }
 
     private[hyperx] def shipVertexAttributesP(shipSrc: Boolean,shipDst: Boolean,

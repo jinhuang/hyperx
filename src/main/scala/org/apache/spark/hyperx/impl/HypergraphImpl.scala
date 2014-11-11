@@ -231,8 +231,8 @@ class HypergraphImpl[VD: ClassTag, ED: ClassTag] protected(
         }
         val activeDirectionOpt = activeSetOpt.map(_._2)
 
-        val preAgg = view.hyperedges.partitionsRDD.mapPartitionsWithIndex{
-            (i,p) => p.flatMap {
+        val preAgg = view.hyperedges.partitionsRDD.mapPartitions({
+            p => p.flatMap {
                 // choose whether to use index to iterate the tuples
                 case (pid, hyperedgePartition) =>
                     val activeFraction =
@@ -279,7 +279,8 @@ class HypergraphImpl[VD: ClassTag, ED: ClassTag] protected(
                         reduceFunc).iterator
                 }
 
-        }.setName("HypergraphImpl.mapReduceTuples - preAgg")
+        }, preservesPartitioning = true).setName("HypergraphImpl.mapReduceTuples - preAgg")
+
 
         vertices.aggregateUsingIndex(preAgg, reduceFunc)
     }
@@ -408,24 +409,17 @@ class HypergraphImpl[VD: ClassTag, ED: ClassTag] protected(
         val vdTag = classTag[VD]
         val vd2Tag = classTag[VD2]
         if (vdTag == vd2Tag) {
-            var start = System.currentTimeMillis()
             vertices.cache()
 
             // update the vertex attribute values
             val newVerts = vertices.leftJoin(other)(updateF).cache()
-            logDebug(("HYPERX DEBUGGING: S0.1.0 outerJoinVertices.leftJoin" +
-                    " in %d ms").format(System.currentTimeMillis() - start))
 
-            start = System.currentTimeMillis()
             // update the replicas, the fewer replicas, the less cost here
             val changedVerts = vertices.asInstanceOf[VertexRDD[VD2]].diff(
                 newVerts)
             val newReplicatedVertexView = replicatedVertexView
                     .asInstanceOf[ReplicatedVertexView[VD2, ED]]
                     .updateVertices(changedVerts)
-            logDebug(("HYPERX DEBUGGING: S0.1.1 " +
-                    "outerJoinVertices.updateVertices in %d ms")
-                    .format(System.currentTimeMillis() - start))
 
             new HypergraphImpl(newVerts, newReplicatedVertexView)
         } else {

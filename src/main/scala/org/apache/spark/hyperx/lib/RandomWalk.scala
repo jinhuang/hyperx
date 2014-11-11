@@ -1,8 +1,8 @@
 package org.apache.spark.hyperx.lib
 
+import org.apache.spark.Logging
 import org.apache.spark.hyperx._
 import org.apache.spark.hyperx.util.HyperUtils
-import org.apache.spark.{Accumulator, Logging}
 
 import scala.collection.mutable
 import scala.reflect.ClassTag
@@ -42,17 +42,19 @@ object RandomWalk extends Logging {
             .outerJoinVertices(hypergraph.outIncidents){(vid, vdata, deg) =>
                 deg.getOrElse[Int](0)}
             .mapTuples(h => (h.id, HyperUtils.divide(1.0, h.srcAttr)))
-            .mapVertices((id, attr) => if (startSet.contains(id)) 1.0 else 0.0)
+            .mapVertices((id, attr) => 0.0)
             .cache()
 
         def vertexProg(id: VertexId, attr: Double, msgSum: Double): Double =
-            resetProb + (1.0 - resetProb) * msgSum
+            attr + (1.0 - resetProb) * msgSum
+//            if (attr == 1.0 || msgSum > 0.0) resetProb + (1.0 - resetProb) * msgSum
+//            else 0.0
 
-        def hyperedgeProg(hyperedge: HyperedgeTuple[Double, HyperAttr[Double]],
-            srcAcc: Accumulator[Int], dstAcc: Accumulator[Int],
-            srcDAcc: Accumulator[Int], dstDAcc: Accumulator[Int])
+        def hyperedgeProg(hyperedge: HyperedgeTuple[Double, HyperAttr[Double]])
+//            srcAcc: Accumulator[Int], dstAcc: Accumulator[Int],
+//            srcDAcc: Accumulator[Int], dstDAcc: Accumulator[Int])
         = {
-            var start = System.currentTimeMillis()
+//            var start = System.currentTimeMillis()
             val dstSize = hyperedge.dstAttr.size
             val srcArray = Array.fill(hyperedge.srcAttr.size)(0)
             val msgVal = hyperedge.srcAttr.zipWithIndex.map{attr =>
@@ -62,20 +64,20 @@ object RandomWalk extends Logging {
                 srcArray(attr._2) = (System.currentTimeMillis() - start).toInt
                 ret
             }.sum * 1.0 / dstSize
-            srcAcc += (System.currentTimeMillis() - start).toInt
-            start = System.currentTimeMillis()
+//            srcAcc += (System.currentTimeMillis() - start).toInt
+//            start = System.currentTimeMillis()
             val ret = hyperedge.dstAttr.map(attr => (attr._1, msgVal)).toIterator
-            dstAcc += (System.currentTimeMillis() - start).toInt
-            srcDAcc += hyperedge.srcAttr.size
-            dstDAcc += hyperedge.dstAttr.size
+//            dstAcc += (System.currentTimeMillis() - start).toInt
+//            srcDAcc += hyperedge.srcAttr.size
+//            dstDAcc += hyperedge.dstAttr.size
             ret
         }
 
         def messageCombiner(a: Double, b: Double): Double = a + b
 
-        val initialMessage = 0.0
+        val initialMessage = resetProb / (1.0 - resetProb)
 
-        HyperPregel.run(walkHypergraph.hyperedges.context, walkHypergraph, initialMessage, numIter,
+        HyperPregel(walkHypergraph, initialMessage, numIter,
             activeDirection = HyperedgeDirection.Out)(
                     vertexProg, hyperedgeProg, messageCombiner)
 

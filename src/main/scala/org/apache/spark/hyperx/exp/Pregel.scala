@@ -139,7 +139,6 @@ object Pregel extends Logging {
             prevG = g
             g = g.outerJoinVertices(newVerts) { (vid, old, newOpt) => newOpt.getOrElse(old) }
             g.cache()
-            g.edges.foreachPartition(x => {})
             val outer = System.currentTimeMillis() - start
             start = System.currentTimeMillis()
 
@@ -154,7 +153,7 @@ object Pregel extends Logging {
             activeMessages = messages.count()
             val mrt = System.currentTimeMillis() - start
 
-            logInfo(s"Pregel finished iteration $i innner $inner outer $outer mrt $mrt")
+            logInfo(s"Pregel finished iteration $i innner $inner outer $outer mrt $mrt with $activeMessages messages")
 
             // Unpersist the RDDs hidden by newly-materialized RDDs
             oldMessages.unpersist(blocking=false)

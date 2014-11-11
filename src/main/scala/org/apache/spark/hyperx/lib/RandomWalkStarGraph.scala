@@ -32,7 +32,12 @@ object RandomWalkStarGraph extends Logging {
         }
 
         def sendMessage(edge: EdgeTriplet[(Double, Double), Double]) = {
-            Iterator((edge.dstId, edge.srcAttr._2 * edge.attr))
+            if (edge.srcAttr._2 > 0 && edge.srcId < 2322299)
+                Iterator((edge.dstId, edge.srcAttr._2 * edge.attr))
+            else if (edge.srcId >= 2322299)
+                Iterator((edge.dstId, edge.srcAttr._1 * edge.attr))
+            else
+                Iterator.empty
         }
 
         def messageCombiner(a: Double, b: Double): Double = a + b

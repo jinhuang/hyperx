@@ -62,7 +62,7 @@ class ReplicatedVertexView[VD: ClassTag, ED: ClassTag](
         val shipSrc = includeSrc && !hasSrcIds
         val shipDst = includeDst && !hasDstIds
         if (shipSrc || shipDst) {
-
+            logInfo("HYPERX DEBUGGING: replicatedVertexView.upgrade")
             val shippedVerts: RDD[(Int, VertexAttributeBlock[VD])] =
                 vertices.shipVertexAttributes(shipSrc, shipDst).setName(
                     ("ReplicatedVertexView.upgrade(%s, %s) - " +
@@ -72,7 +72,7 @@ class ReplicatedVertexView[VD: ClassTag, ED: ClassTag](
 
             val newHyperedges: HyperedgeRDD[ED, VD] =
                 hyperedges.withPartitionsRDD(
-                    hyperedges.partitionsRDD.zipPartitions(shippedVerts) {
+                    hyperedges.partitionsRDD.zipPartitions(shippedVerts, preservesPartitioning = true)({
                         (hPartIter, shippedVertsIter) =>
                             val ret = hPartIter.map {
                                 case (pid, hyperedgePartition) => {
@@ -84,7 +84,7 @@ class ReplicatedVertexView[VD: ClassTag, ED: ClassTag](
                                 }
                             }
                             ret
-                        }
+                        })
                 )
 
             hyperedges = newHyperedges
@@ -113,7 +113,7 @@ class ReplicatedVertexView[VD: ClassTag, ED: ClassTag](
 
             val newHyperedges: HyperedgeRDD[ED, VD] =
                 hyperedges.withPartitionsRDD(
-                    hyperedges.partitionsRDD.zipPartitions(shippedVerts) {
+                    hyperedges.partitionsRDD.zipPartitions(shippedVerts, preservesPartitioning = true) {
                         (hPartIter, shippedVertsIter) =>
                             val ret = hPartIter.map {
                                 case (pid, hyperedgePartition) => {
@@ -152,7 +152,7 @@ class ReplicatedVertexView[VD: ClassTag, ED: ClassTag](
                 .partitionBy(hyperedges.partitioner.get)
 
         val newHyperedges = hyperedges.withPartitionsRDD[ED,
-                VD](hyperedges.partitionsRDD.zipPartitions(shippedActives) {
+                VD](hyperedges.partitionsRDD.zipPartitions(shippedActives, preservesPartitioning = true) {
             (hPartIter, shippedActivesIter) => hPartIter.map {
                 case (pid, hyperedgePartition) =>
                     (pid, hyperedgePartition.withActiveSet(shippedActivesIter
@@ -171,7 +171,7 @@ class ReplicatedVertexView[VD: ClassTag, ED: ClassTag](
                 .partitionBy(hyperedges.partitioner.get)
 
         val newHyperedges = hyperedges.withPartitionsRDD[ED,
-                VD](hyperedges.partitionsRDD.zipPartitions(shippedActives) {
+                VD](hyperedges.partitionsRDD.zipPartitions(shippedActives, preservesPartitioning = true) {
             (hPartIter, shippedActivesIter) => hPartIter.map {
                 case (pid, hyperedgePartition) =>
                     val start = System.currentTimeMillis()
@@ -201,11 +201,12 @@ class ReplicatedVertexView[VD: ClassTag, ED: ClassTag](
                 .partitionBy(hyperedges.partitioner.get)
 
         val newHyperedges = hyperedges.withPartitionsRDD[ED, VD](
-            hyperedges.partitionsRDD.zipPartitions(shippedVerts) {
+            hyperedges.partitionsRDD.zipPartitions(shippedVerts, preservesPartitioning = true) {
             (hPartIter, shippedVertsIter) => hPartIter.map {
                 case (pid, hyperedgePartition) =>
                     (pid, hyperedgePartition.updateVertices(
-                        shippedVertsIter.flatMap(_._2.iterator)))
+                        shippedVertsIter.flatMap{shipped =>
+                            shipped._2.iterator}))
             }
         })
         new ReplicatedVertexView(newHyperedges, hasSrcIds, hasDstIds)
