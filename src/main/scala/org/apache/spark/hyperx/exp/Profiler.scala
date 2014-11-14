@@ -1,29 +1,56 @@
 package org.apache.spark.hyperx.exp
 
-import org.apache.spark.hyperx.util.collection.HyperXOpenHashMap
-
 object Profiler {
 
     type HyperedgeId = Int
 
     def main(args: Array[String]): Unit = {
 
+        val map = (0L until 100000L).map(i => i -> i).toMap
 
+        val stop = readLine()
+        println(map.map(i => 1).reduce(_ + _))
         // comparing two maps with map of a two-tuple
 //        val mapA = new HyperXOpenHashMap[Int, Int]()
 //        val mapB = new HyperXOpenHashMap[Int, Int]()
-        val map = new HyperXOpenHashMap[Int, (Int, Int)]()
-
-        (0 until 10000000).foreach{i =>
-//            mapA.update(i, i + 1)
-//            mapB.update(i, i + 1)
-            map.update(i, (i + 1, i + 2))
-        }
-
-//        val ret = mapA.map(i => i._2 - i._1).reduce(_ + _) + mapB.map(i => i._2 - i._1).reduce(_ + _)
-        val ret = map.map(i => i._2._2 - i._2._1).reduce(_ + _)
-        println(ret)
-        val stop = readLine()
+//        val set = new HyperXOpenHashSet[Long]()
+//
+//        (0 until 1115729).foreach{i =>
+////            mapA.update(i, i + 1)
+////            mapB.update(i, i + 1)
+//            set.add(Random.nextInt(2322299))
+//        }
+////        val ret = mapA.map(i => i._2 - i._1).reduce(_ + _) + mapB.map(i => i._2 - i._1).reduce(_ + _)
+////        val ret = map.map(i => i._2._2 - i._2._1).reduce(_ + _)
+//        val ret = set.iterator.map(i => 1).reduce(_ + _)
+//        val inputFile = "/run/media/soone/Data/hyperx/datasets/exp/hyperx/orkut_communities"
+//        val source = Source.fromFile(inputFile)
+//        val lines = source.getLines()
+//        var builder = new FlatHyperedgePartitionBuilder[HyperAttr[Double], Double]()
+//        lines.filterNot(s => s.isEmpty || s.startsWith("#") || s.split(":").length < 2).zipWithIndex.filter(i => Random.nextInt(28) == 0).foreach{line =>
+//            val ary = line._1.split(":").map(_.trim).filter(_.nonEmpty)
+//            val src = new VertexSet()
+//            ary(0).split(" ").map(_.trim).foreach(v => src.add(v.toLong))
+//            val dst = new VertexSet()
+//            ary(1).split(" ").map(_.trim).foreach(v => dst.add(v.toLong))
+//            val attr = new HyperXOpenHashMap[VertexId, Double]()
+//            src.iterator.foreach(v => attr.update(v, 0.0))
+//            builder.add(src, dst, line._2, attr)
+//        }
+//
+//        val partition = builder.toFlatHyperedgePartition
+//        val vertices = partition.vertexIds.toSet[VertexId].iterator.map(v => (v, 0.0))
+//        val vertexIds = new VertexSet
+//        vertices.foreach(v => vertexIds.add(v._1))
+//        val vertexPartition = VertexPartition(vertices)
+//        partition.withVertices[Double](vertexPartition)
+//        partition.withActiveSet(Some(vertexIds))
+////        vertexPartition = null
+//        builder = null
+//        val newVertices = vertices.map(v => (v._1, 1.0))
+//        partition.updateVertices(newVertices)
+//        val stop = readLine()
+//        println(partition.iterator.size)
         // comparing arrays and hashMap
 //        val map = new HyperXOpenHashMap[VertexId, Int]()
 //        val keyVec = new HyperXPrimitiveVector[VertexId]()

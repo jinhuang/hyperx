@@ -1,7 +1,7 @@
 package org.apache.spark.hyperx
 
+import org.apache.spark.SparkContext._
 import org.apache.spark._
-import org.apache.spark.hyperx.impl.VertexRDDFunctions._
 import org.apache.spark.hyperx.impl.{RoutingTablePartition, ShippableVertexPartition, VertexAttributeBlock}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
@@ -185,7 +185,7 @@ class VertexRDD[@specialized VD: ClassTag](
             case _ =>
                 this.withPartitionsRDD[VD3](
                     partitionsRDD.zipPartitions(
-                        other.copartitionWithVertices(this.partitioner.get),
+                        other.partitionBy(this.partitioner.get),
                         preservesPartitioning = true)(f = (partIter, msgs) =>
                         partIter.map(_.leftJoin(msgs)(f)))
                 )
@@ -247,7 +247,7 @@ class VertexRDD[@specialized VD: ClassTag](
             case _ =>
                 this.withPartitionsRDD {
                     partitionsRDD.zipPartitions(
-                        other.copartitionWithVertices(this.partitioner.get),
+                        other.partitionBy(this.partitioner.get),
                         preservesPartitioning = true) {
                         (partIter, msgs) =>
                             partIter.map(_.innerJoin(msgs)(f))
@@ -295,7 +295,7 @@ class VertexRDD[@specialized VD: ClassTag](
         reduceFunc: (VD2,VD2) => VD2):
     VertexRDD[VD2] = {
         // shuffle messages to their destinations
-        val shuffled = messages.copartitionWithVertices(this.partitioner.get)
+        val shuffled = messages.partitionBy(this.partitioner.get)
         // combine the messages sent to the same vertices
         val parts = partitionsRDD.zipPartitions(shuffled,
             preservesPartitioning = true) { (thisIter, msgIter) =>
@@ -308,7 +308,7 @@ class VertexRDD[@specialized VD: ClassTag](
         reduceFunc: (VD2,VD2) => VD2, rT: Array[Accumulator[Int]], rStart: Array[Accumulator[Long]], rCpl: Array[Accumulator[Long]], countAcc: Array[Accumulator[Int]])
     : VertexRDD[VD2] = {
         // shuffle messages to their destinations
-        val shuffled = messages.copartitionWithVertices(this.partitioner.get)
+        val shuffled = messages.partitionBy(this.partitioner.get)
         // combine the messages sent to the same vertices
         val parts = partitionsRDD.zipWithIndex().zipPartitions(shuffled,
             preservesPartitioning = true) { (thisIter, msgIter) =>
@@ -510,7 +510,7 @@ object VertexRDD extends Logging {
     : VertexRDD[VD] = {
         val vPartitioned: RDD[(VertexId, VD)] = vertices.partitioner match {
             case Some(p) => vertices
-            case None => vertices.copartitionWithVertices(
+            case None => vertices.partitionBy(
                 new HashPartitioner(vertices.partitions.size))
         }
         val routingTables = createRoutingTables(hyperedges,
@@ -532,7 +532,7 @@ object VertexRDD extends Logging {
         hyperedges: HyperedgeRDD[_, _], defaultVal: VD, partitioner: Partitioner,
         storageLevel: StorageLevel = StorageLevel.MEMORY_ONLY)
     : VertexRDD[VD] = {
-        val vPartitioned = vertices.copartitionWithVertices(partitioner)
+        val vPartitioned = vertices.partitionBy(partitioner)
         val routingTables = createRoutingTables(hyperedges, partitioner)
         val vertexPartitions = vPartitioned.zipPartitions(routingTables,
             preservesPartitioning = true) {
@@ -556,7 +556,7 @@ object VertexRDD extends Logging {
 
         val numHyperedgePartitions = hyperedges.partitions.size
 
-        vid2pid.copartitionWithVertices(vertexPartitioner).mapPartitions(
+        vid2pid.partitionBy(vertexPartitioner).mapPartitions(
             iter => Iterator(
                 RoutingTablePartition.fromMsgs(numHyperedgePartitions, iter)),
             preservesPartitioning = true)

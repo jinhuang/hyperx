@@ -72,7 +72,9 @@ private[hyperx] abstract class VertexPartitionBase[@specialized(Long, Int,
 
     def mask: BitSet
 
-    val capacity: Int = index.capacity
+//    val capacity: Int = index.capacity
+
+    val capacity: Int = mask.capacity
 
     def size: Int = mask.cardinality()
 

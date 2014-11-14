@@ -50,6 +50,8 @@ object Analytics extends Logging {
             v match {
                 case "Plain" => new PlainPartition
                 case "Greedy" => new GreedyPartition
+                case "Bi" => new BipartitePartition
+                case "Aweto" => new AwetoPartition
                 case _ => throw new IllegalArgumentException("Invalid " +
                         "PartitionStrategy: " + v)
             }
@@ -154,40 +156,6 @@ object Analytics extends Logging {
                 hypergraph.vertices.saveAsObjectFile(outputPath + name + "/vertices")
                 sc.stop()
 
-            case "tp" =>
-                println("==========================")
-                println("| Transition Probabilities |")
-                println("==========================")
-
-                val sc = new SparkContext(conf.setAppName("Transition Probabilities (" +
-                        fname + ")"))
-
-                val hypergraph = loadHypergraph(sc, fname, vertexInput,
-                    fieldSeparator, weighted, numPart, inputMode,
-                    partitionStrategy, hyperedgeStorageLevel, vertexStorageLevel)
-                    .cache()
-
-                val ret = TransitionProbabilities.run(hypergraph)
-                ret.saveAsTextFile(outputPath + "tp")
-                sc.stop()
-
-            case "cc" =>
-                println("==========================")
-                println("| Clustering Coefficients |")
-                println("==========================")
-
-                val sc = new SparkContext(conf.setAppName("Clustering Coefficients (" +
-                        fname + ")"))
-
-                val hypergraph = loadHypergraph(sc, fname, vertexInput,
-                    fieldSeparator, weighted, numPart, inputMode,
-                    partitionStrategy, hyperedgeStorageLevel, vertexStorageLevel)
-                        .cache()
-
-                val ret = ClusterCoefficients.run(hypergraph)
-                ret.saveAsTextFile(outputPath + "cc")
-                sc.stop()
-
             case "rw" =>
                 println("==========================")
                 println("| Random Walks |")
@@ -204,21 +172,11 @@ object Analytics extends Logging {
 
                 val maxIter = options.remove("maxIter").map(_.toInt).getOrElse(10)
                 val num= options.remove("numStartVertices").map(_.toInt)
-                        .getOrElse(hypergraph.numVertices.toInt)
+                        .getOrElse(hypergraph.numVertices.toInt / 1000)
 
-                val ret = RandomWalk.run(hypergraph, num, maxIter)
+                val startSet = hypergraph.pickRandomVertices(num)
+                val ret = RandomWalk.run(hypergraph, maxIter, startSet)
                 ret.vertices.saveAsTextFile(outputPath + "rw")
-                sc.stop()
-
-            case "rwg" =>
-                val sc = new SparkContext(conf.setAppName("Random Walks GraphX (" + fname + ")"))
-
-                val graph = GraphLoader.edgeListFile(sc, fname, false, numPart)
-
-                val maxIter = options.remove("maxIter").map(_.toInt).getOrElse(10)
-                val ret = RandomWalkStarGraph.run(graph, maxIter)
-
-                ret.vertices.saveAsTextFile(outputPath + "rwg")
                 sc.stop()
 
             case "lp" =>

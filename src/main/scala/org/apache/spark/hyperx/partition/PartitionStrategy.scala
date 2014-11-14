@@ -1,6 +1,6 @@
 package org.apache.spark.hyperx.partition
 
-import org.apache.spark.Logging
+import org.apache.spark.{HashPartitioner, Logging}
 import org.apache.spark.hyperx._
 import org.apache.spark.hyperx.util.HyperUtils
 import org.apache.spark.rdd.RDD
@@ -51,24 +51,30 @@ trait PartitionStrategy extends Serializable with Logging {
         // demands
         val demands = hRDD.map(h =>
             Tuple2(h._2, HyperUtils.iteratorFromHString(h._1).toSet))
-            .reduceByKey(_.union(_)).map(_._2.size).collect()
-        logArray("demands", demands)
+            .reduceByKey(_.union(_)).partitionBy(new HashPartitioner(k))
+        val locals = vRDD.map(v => Tuple2(v._2, Set(v._1))).reduceByKey(_ ++ _).partitionBy(new HashPartitioner(k))
 
+        val replicas = demands.zipPartitions(locals){(d, l) =>
+            val dSet = d.map(_._2).reduce(_ ++ _)
+            val lSet = l.map(_._2).reduce(_ ++ _)
+            Iterator(dSet.size - dSet.intersect(lSet).size)
+        }.collect()
+
+        logArray("replicas", replicas)
+        logInfo("HYPERX PARTITION: replicaFactor: %f".format(replicas.sum.toDouble / vRDD.count()))
         // degrees
-        val degrees = hRDD.map{h =>
-            val pair = HyperUtils.countDetailDegreeFromHString(h._1)
-            Tuple2(h._2, pair)}
-            .reduceByKey((a, b) => (a._1 + b._1, a._2 + b._2)).map(_._2)
-            .collect()
-        val srcDegrees = degrees.map(_._1)
-        val dstDegrees = degrees.map(_._2)
-        logArray("source degrees", srcDegrees)
-        logArray("destination degrees", dstDegrees)
+//        val degrees = hRDD.map{h =>
+//            val pair = HyperUtils.countDetailDegreeFromHString(h._1)
+//            Tuple2(h._2, pair)}
+//            .reduceByKey((a, b) => (a._1 + b._1, a._2 + b._2)).map(_._2)
+//            .collect()
+//        val srcDegrees = degrees.map(_._1)
+//        val dstDegrees = degrees.map(_._2)
+//        logArray("source degrees", srcDegrees)
+//        logArray("destination degrees", dstDegrees)
 
-        // locals
-        val locals = vRDD.map(v => Tuple2(v._2, 1))
-          .reduceByKey(_ + _).map(_._2).collect()
-        logArray("locals", locals)
+//        val localsCount = vRDD.map(v => Tuple2(v._2, 1))
+//          .reduceByKey(_ + _).map(_._2).collect()
     }
 
     private def logArray(name: String, ary: Array[Int]): Unit = {

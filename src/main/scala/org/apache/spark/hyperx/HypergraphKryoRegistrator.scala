@@ -36,6 +36,7 @@ class HypergraphKryoRegistrator extends KryoRegistrator {
         kryo.register(classOf[ReplicatedVertexView[Object, Object]])
         kryo.register(classOf[PlainPartition])
         kryo.register(classOf[GreedyPartition])
-
+        kryo.register(classOf[BipartitePartition])
+        kryo.register(classOf[AwetoPartition])
     }
 }

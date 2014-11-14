@@ -54,6 +54,7 @@ private[hyperx] object VertexPartition extends Logging {
             partitionToOps(partition)
     }
 
+
 }
 
 /** A map from vertex id to vertex attribute. */

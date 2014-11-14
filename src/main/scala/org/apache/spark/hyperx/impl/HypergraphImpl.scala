@@ -257,13 +257,13 @@ class HypergraphImpl[VD: ClassTag, ED: ClassTag] protected(
                                 hyperedgePartition.isActive(h.srcIds) ||
                                         hyperedgePartition.isActive(h.dstIds))
                         case Some(HyperedgeDirection.Out) =>
-                            if (activeFraction < 0.8) {
-                                hyperedgePartition.indexIterator(srcVertexId =>
-                                    hyperedgePartition.isActive(srcVertexId))
-                            } else {
+//                            if (activeFraction < 0.8) {
+//                                hyperedgePartition.indexIterator(srcVertexId =>
+//                                    hyperedgePartition.isActive(srcVertexId))
+//                            } else {
                                 hyperedgePartition.iterator.filter(h =>
                                     hyperedgePartition.isActive(h.srcIds))
-                            }
+//                            }
                         case Some(HyperedgeDirection.In) =>
                             hyperedgePartition.iterator.filter(h =>
                                 hyperedgePartition.isActive(h.srcIds))
@@ -280,7 +280,6 @@ class HypergraphImpl[VD: ClassTag, ED: ClassTag] protected(
                 }
 
         }, preservesPartitioning = true).setName("HypergraphImpl.mapReduceTuples - preAgg")
-
 
         vertices.aggregateUsingIndex(preAgg, reduceFunc)
     }
@@ -405,10 +404,8 @@ class HypergraphImpl[VD: ClassTag, ED: ClassTag] protected(
     override def outerJoinVertices[U: ClassTag, VD2: ClassTag]
     (other: RDD[(VertexId, U)])
     (updateF: (VertexId, VD, Option[U]) => VD2)
-    : Hypergraph[VD2, ED] = {
-        val vdTag = classTag[VD]
-        val vd2Tag = classTag[VD2]
-        if (vdTag == vd2Tag) {
+    (implicit eq: VD =:= VD2 = null): Hypergraph[VD2, ED] = {
+        if (eq != null) {
             vertices.cache()
 
             // update the vertex attribute values

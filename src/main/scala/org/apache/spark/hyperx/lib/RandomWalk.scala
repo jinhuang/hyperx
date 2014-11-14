@@ -2,7 +2,6 @@ package org.apache.spark.hyperx.lib
 
 import org.apache.spark.Logging
 import org.apache.spark.hyperx._
-import org.apache.spark.hyperx.util.HyperUtils
 
 import scala.collection.mutable
 import scala.reflect.ClassTag
@@ -23,65 +22,58 @@ import scala.reflect.ClassTag
 object RandomWalk extends Logging {
 
     def run[VD: ClassTag, ED: ClassTag]( hypergraph: Hypergraph[VD, ED])
-    :Hypergraph[Double, HyperAttr[Double]] = {
+    :Hypergraph[Double, _] = {
         val num = hypergraph.numVertices
         run(hypergraph, 10, hypergraph.pickRandomVertices(num.toInt))
     }
 
     def run[VD: ClassTag, ED: ClassTag]( hypergraph: Hypergraph[VD, ED],
         num: Int, maxIter: Int)
-    :Hypergraph[Double, HyperAttr[Double]] = {
+    :Hypergraph[Double, _] = {
         run(hypergraph, maxIter, hypergraph.pickRandomVertices(num))
     }
 
     def run[VD: ClassTag, ED: ClassTag](hypergraph: Hypergraph[VD, ED],
         numIter: Int, startSet: mutable.HashSet[VertexId], resetProb: Double = 0.15)
-    : Hypergraph[Double, HyperAttr[Double]] = {
+    : Hypergraph[Double, _] = {
 
-        val walkHypergraph: Hypergraph[Double, HyperAttr[Double]] = hypergraph
+        val walkHypergraph: Hypergraph[(Double, Int), Boolean] = hypergraph
             .outerJoinVertices(hypergraph.outIncidents){(vid, vdata, deg) =>
                 deg.getOrElse[Int](0)}
-            .mapTuples(h => (h.id, HyperUtils.divide(1.0, h.srcAttr)))
-            .mapVertices((id, attr) => 0.0)
+            .mapTuples(h => (h.id, null.asInstanceOf[Boolean]))
+            .mapVertices((id, attr) => (if (startSet.contains(id)) 1.0 else 0.0, attr))
             .cache()
 
-        def vertexProg(id: VertexId, attr: Double, msgSum: Double): Double =
-            attr + (1.0 - resetProb) * msgSum
-//            if (attr == 1.0 || msgSum > 0.0) resetProb + (1.0 - resetProb) * msgSum
-//            else 0.0
 
-        def hyperedgeProg(hyperedge: HyperedgeTuple[Double, HyperAttr[Double]])
+        def vertexProg(id: VertexId, attr: (Double, Int), msgSum: Double): (Double, Int) = {
+            if (startSet.contains(id)) {
+                (resetProb * 1.0 + (1 - resetProb) * msgSum, attr._2)
+            } else {
+                ((1 - resetProb) * msgSum, attr._2)
+            }
+        }
+
+        def hyperedgeProg(hyperedge: HyperedgeTuple[(Double, Int), Boolean])
 //            srcAcc: Accumulator[Int], dstAcc: Accumulator[Int],
 //            srcDAcc: Accumulator[Int], dstDAcc: Accumulator[Int])
         = {
-//            var start = System.currentTimeMillis()
             val dstSize = hyperedge.dstAttr.size
-            val srcArray = Array.fill(hyperedge.srcAttr.size)(0)
-            val msgVal = hyperedge.srcAttr.zipWithIndex.map{attr =>
-                val start = System.currentTimeMillis()
-                val ret = attr._1._2 * hyperedge.attr(attr._1._1)
-//                val ret = attr._1._2 / hyperedge.srcAttr(attr._1._1)
-                srcArray(attr._2) = (System.currentTimeMillis() - start).toInt
-                ret
-            }.sum * 1.0 / dstSize
-//            srcAcc += (System.currentTimeMillis() - start).toInt
-//            start = System.currentTimeMillis()
-            val ret = hyperedge.dstAttr.map(attr => (attr._1, msgVal)).toIterator
-//            dstAcc += (System.currentTimeMillis() - start).toInt
-//            srcDAcc += hyperedge.srcAttr.size
-//            dstDAcc += hyperedge.dstAttr.size
-            ret
+            val msgVal = hyperedge.srcAttr.zipWithIndex.map{attr => attr._1._2._1 / attr._1._2._2}.sum / dstSize
+            if (msgVal > 0.0)
+                hyperedge.dstAttr.map(attr => (attr._1, msgVal)).toIterator
+            else
+                Iterator.empty
         }
 
         def messageCombiner(a: Double, b: Double): Double = a + b
 
-        val initialMessage = resetProb / (1.0 - resetProb)
+        val initialMessage = 0.0
 
-        HyperPregel(walkHypergraph, initialMessage, numIter,
+        val ret = HyperPregel(walkHypergraph, initialMessage, numIter,
             activeDirection = HyperedgeDirection.Out)(
                     vertexProg, hyperedgeProg, messageCombiner)
 
-
+        ret.mapVertices((id, attr) => attr._1)
 
     }
 

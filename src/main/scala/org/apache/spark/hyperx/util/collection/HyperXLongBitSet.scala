@@ -1,6 +1,6 @@
 package org.apache.spark.hyperx.util.collection
 
-import org.apache.spark.util.collection.{OpenHashMap, BitSet}
+import org.apache.spark.util.collection.BitSet
 
 class HyperXLongBitSet extends Iterable[Long] with Serializable {
 
@@ -24,10 +24,10 @@ class HyperXLongBitSet extends Iterable[Long] with Serializable {
         }.iterator
     }
 
-    private val valuebits = 4
+    private val valuebits = 16
     private val valuemask = (1 << valuebits) - 1
 
-    private[hyperx] val sets = new OpenHashMap[Long, BitSet](valuebits)
+    private[hyperx] val sets = new HyperXOpenHashMap[Long, BitSet](valuebits)
 
     private def getSetIndex(index: Long): Long = {
         index >> valuebits

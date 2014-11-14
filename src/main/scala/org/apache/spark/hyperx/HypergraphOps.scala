@@ -1,8 +1,5 @@
 package org.apache.spark.hyperx
 
-import org.apache.spark.hyperx.util.collection.HyperXPrimitiveVector
-import org.apache.spark.mllib.linalg.{Matrices, Matrix, Vectors}
-import org.apache.spark.mllib.linalg.distributed.{IndexedRow, IndexedRowMatrix}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.util.collection.BitSet
 
@@ -83,21 +80,8 @@ class HypergraphOps[VD: ClassTag, ED: ClassTag](hypergraph: Hypergraph[VD,
     @transient lazy val hDegrees: RDD[(HyperedgeId, Int)] =
         hyperedgeDegreeRDD(HyperedgeDirection.Either).setName("HypergraphOps.hDegrees")
 
-    @transient lazy val incidentMatrix: IndexedRowMatrix =
-        evaluateIncidentMatrix()
-
-    @transient lazy val vertexDegreeMatrix: IndexedRowMatrix =
-        evaluateWeightedDegreesMatrix()
-
-    @transient lazy val hyperedgeDegreeMatrix: IndexedRowMatrix =
-        evaluateHDegreesMatrix()
-
-    @transient lazy val hyperedgeWeightMatrix: IndexedRowMatrix =
-        evaluateWeightMatrix()
-
-    @transient lazy val laplacianMatrix: IndexedRowMatrix =
-        evaluateLaplacianMatrix()
-
+    @transient lazy val laplacian: VertexRDD[Map[VertexId, Double]] =
+        evaluateLaplacian()
 
     /**
      * Collect the neighbor vertex ids for each vertex
@@ -426,95 +410,98 @@ class HypergraphOps[VD: ClassTag, ED: ClassTag](hypergraph: Hypergraph[VD,
         }
     }
 
-    private def evaluateIncidentMatrix(): IndexedRowMatrix = {
-        val idH = hypergraph.assignHyperedgeId()
-        val vertexIncident = idH.mapReduceTuples[Array[HyperedgeId]]({ t =>
-            (t.srcAttr.keySet.iterator ++ t.dstAttr.keySet.iterator).map(v => (v, Array(t.attr)))
-        }, _ ++ _).map{v =>
-            new IndexedRow(v._1, Vectors.sparse(numHyperedges.toInt, v._2, Array.fill(v._2.size)(1.0)))
-        }
-        new IndexedRowMatrix(vertexIncident)
-    }
+    private def evaluateLaplacian(): VertexRDD[Map[VertexId, Double]] = {
 
-    private def evaluateWeightedDegreesMatrix(): IndexedRowMatrix = {
-        val doubleH = hypergraph.toDoubleWeight
-        val weightedDegrees = doubleH.mapReduceTuples[Double]({t =>
-            (t.srcAttr.keySet.iterator ++ t.dstAttr.keySet.iterator).map(v => (v, t.attr))
-        }, _ + _).map{v =>
-            new IndexedRow(v._1, Vectors.sparse(numVertices.toInt, Array(v._1.toInt), Array(v._2)))
-        }
-        new IndexedRowMatrix(weightedDegrees)
-    }
+        // sqrt diagonal matrix
+        val D = hypergraph.outerJoinVertices(hypergraph.incidents){(vid, vdata, deg) =>
+            deg match {
+                case someDeg: Int =>
+                    1.0 / Math.sqrt(someDeg)
+                case None =>
+                    0.0
+            }}
 
-    private def evaluateHDegreesMatrix(): IndexedRowMatrix = {
-        val idH = hypergraph.assignHyperedgeId()
-        val hyperedgeDegrees = idH.hyperedges.map(h =>
-            new IndexedRow(h.attr,
-                Vectors.sparse(numHyperedges.toInt, Array(h.attr), Array(h.srcIds.size + h.dstIds.size))))
-        new IndexedRowMatrix(hyperedgeDegrees)
-    }
+        // multiplied by incident matrix
+        // essentially the tuple view (as a tuple corresponds to a hyperedge with
+        // its incident vertices), no need to materialize
+        val DH = D
 
-    private def evaluateWeightMatrix(): IndexedRowMatrix = {
-        val pair = hypergraph.getHyperedgeIdWeightPair
-        val idWeight = pair.map(h => new IndexedRow(h._1, Vectors.sparse(numHyperedges.toInt, Array(h._1), Array(h._2))))
-        new IndexedRowMatrix(idWeight)
-    }
+        // multiplied by hyperedge weight matrix
+        // essentially scale the vertex values by the hyperedge weight
+        // no need to materialize
+        val DHW = DH
 
-    private def evaluateLaplacianMatrix(): IndexedRowMatrix = {
-        val vertex = inverseDiagonalMatrix(vertexDegreeMatrix, 0.5)
-        val hyperedge = inverseDiagonalMatrix(hyperedgeDegreeMatrix, 1)
-        val localVertex = collectMatrix(vertex)
-        val localHyperedge = collectMatrix(hyperedge)
-        val localWeight = collectMatrix(hyperedgeWeightMatrix)
-        val localIncident = collectMatrix(incidentMatrix)
-        val localTranspose = transpose(incidentMatrix)
-        val theta = vertex.multiply(localIncident).multiply(localWeight)
-            .multiply(localHyperedge).multiply(localTranspose)
-            .multiply(localVertex)
-        subtractFromIdentity(theta)
-    }
+        // multiplied by the transpose of incident matrix
+        // for each pair of vertices co-appear in at least one hyperedge, compute
+        // the sum of values on all the co-appearing hyperedges
+        // essentially aggregate by neighboring pair
+        val DHWH = DHW.mapReduceTuples[Map[VertexId, Double]]({tuple =>
 
-    private def inverseDiagonalMatrix(matrix: IndexedRowMatrix, exp: Double): IndexedRowMatrix = {
-        val newRows = matrix.rows.map{row =>
-            val ary = row.vector.toArray
-            assert(ary.count(_ > 0.0) == 1)
-            val newVal = 1.0 / Math.pow(ary.filter(_ > 0.0)(0), exp)
-            new IndexedRow(row.index, Vectors.sparse(row.vector.size, Array(row.index.toInt), Array(newVal)))
-        }
-        new IndexedRowMatrix(newRows)
-    }
-
-    private def transpose(matrix: IndexedRowMatrix): Matrix = {
-        val vectors = matrix.rows.map(_.vector).collect()
-        val data = vectors.map(_.toArray).reduce(_ ++ _)
-        Matrices.dense(matrix.numCols().toInt, matrix.numRows().toInt, data)
-    }
-
-    private def subtractFromIdentity(matrix: IndexedRowMatrix): IndexedRowMatrix = {
-        val numRows = matrix.numRows()
-        val numCols = matrix.numCols()
-        assert(numRows == numCols)
-        val ret = matrix.rows.zipWithIndex().map { r =>
-            val nonZeros = r._1.vector.toArray.zipWithIndex.map(v => (v._2, if (v._2 == r._2) 1.0 - v._1 else -v._1)).filter(_._2 > 0.0)
-            val index = new HyperXPrimitiveVector[Int]()
-            val values = new HyperXPrimitiveVector[Double]()
-            nonZeros.foreach{i =>
-                index += i._1
-                values += i._2
+            // just in case ED is not double
+            val weight = tuple.attr match {
+                case doubleWeight: Double =>
+                    doubleWeight
+                case _ =>
+                    1.0
             }
-            new IndexedRow(r._1.index, Vectors.sparse(nonZeros.size, index.trim().array, values.trim().array))
+
+            // generate co-appearance pairs, routed to one of the vertices while avoiding
+            // duplicate computations on symmetry pairs
+            (tuple.srcAttr.keySet.iterator ++ tuple.dstAttr.keySet.iterator).flatMap{ v =>
+                val vVal = if (tuple.srcAttr.hasKey(v)) tuple.srcAttr(v) else tuple.dstAttr(v)
+                (tuple.srcAttr.keySet.iterator ++ tuple.dstAttr.keySet.iterator).map{ u =>
+                    val uVal = if (tuple.srcAttr.hasKey(u)) tuple.srcAttr(u) else tuple.dstAttr(u)
+                    val even = (u + v) % 2 == 0
+                    if (u <= v) { // symmetric pair only computes once
+                        if (even) { // balance the workload on different vertices
+                            (u, Map(v, uVal * weight))
+                        } else {
+                            (v, Map(u, vVal * weight))
+                        }
+                    } else null.asInstanceOf[(VertexId, Map[VertexId, Double])]
+                }
+            }.toIterator
+        }, mergeMap)
+
+        // multiplied by degree matrix
+        // scale each pair value by its corresponding degree
+        val DHWHD = D.outerJoinVertices(DHWH) { (vid, vdata, msg) => // aggregate by one of the vertex
+            msg match {
+                case map: Map[VertexId, Double] =>
+                    map.mapValues(old => 0.5 * old * vdata)
+                case None =>
+                    Map()
+            }
+        }.mapReduceTuples[Map[VertexId, Double]]({tuple => // reduce by the other vertex
+            val src = tuple.srcAttr.flatMap(u => u._2.map(v => (v._1, Map(u._1 -> v._2)))).iterator
+            val dst = tuple.dstAttr.flatMap(u => u._2.map(v => (v._1, Map(u._1 -> v._2)))).iterator
+            src ++ dst
+        }, mergeMap)
+
+
+        // subtracted from the identity matrix
+        val laplacian = DHWHD.mapValues{(vid, map) =>
+            if (map.contains(vid)) {// take care diagonal self pairs
+                map.map{v =>
+                    val oldVal = v._2
+                    val newVal = if (v._1 == vid) 1.0 - oldVal else 0.0 - oldVal
+                    v._1 -> newVal
+                }.toMap
+            } else {
+                map.mapValues(old => 0 - old)
+            }
         }
-        new IndexedRowMatrix(ret)
+
+        // the laplacian I - 0.5 D^(-0.5)HWH^(T)D^(-0.5) with symmetric entries
+        // de-duplicated
+        laplacian
     }
 
-    private def collectMatrix(matrix: IndexedRowMatrix): Matrix = {
-        val vectors = matrix.rows.map(_.vector)
-        val numCols = matrix.numCols().toInt
-        val numRows = matrix.numRows().toInt
-        val data = (0 until numCols).map{i =>
-            vectors.map(v => v(i)).collect()
-        }.reduce(_ ++ _)
-        Matrices.dense(numRows, numCols, data)
+    private def mergeMap(a: Map[VertexId, Double], b: Map[VertexId, Double]): Map[VertexId, Double] = {
+        (a.keySet ++ b.keySet).map { v =>
+            val aVal = a.getOrElse(v, 0.0)
+            val bVal = b.getOrElse(v, 0.0)
+            v -> (aVal + bVal)
+        }.toMap
     }
-
 }

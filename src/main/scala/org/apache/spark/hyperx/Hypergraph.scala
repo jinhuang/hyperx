@@ -308,7 +308,7 @@ Serializable {
      * @tparam VD2 the new vertex value type
      */
     def outerJoinVertices[U: ClassTag, VD2: ClassTag](other: RDD[(VertexId, U)])
-        (mapFunc: (VertexId, VD, Option[U]) => VD2)
+        (mapFunc: (VertexId, VD, Option[U]) => VD2)(implicit eq: VD =:= VD2 = null)
     : Hypergraph[VD2, ED]
 
     /**

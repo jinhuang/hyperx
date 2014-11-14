@@ -1,8 +1,8 @@
 package org.apache.spark.hyperx
 
-import org.apache.spark.hyperx.util.HyperUtils
-import org.apache.spark.{SparkContext, Accumulator, Logging}
 import org.apache.spark.SparkContext._
+import org.apache.spark.hyperx.util.HyperUtils
+import org.apache.spark.{Accumulator, Logging, SparkContext}
 
 import scala.reflect.ClassTag
 
@@ -38,6 +38,7 @@ object HyperPregel extends Logging {
             // messages and therefore need to be updated is determined on the
             // particular algorithm
             val newVerts = h.vertices.innerJoin(msg)(vprog).cache()
+//            val newVerts = h.vertices
             prevH = h
 
             // Update the vertex attribute values
@@ -49,14 +50,15 @@ object HyperPregel extends Logging {
             }.cache()
 
             val oldMsg = msg
+
             // Hyperedge computation
             // PARTITION: hyperedge degree balance
             msg = h.mapReduceTuples(hprog, mergeMsg, Some((newVerts,
                     activeDirection))).cache()
             activeMsg = msg.count()
-            logInfo(("HYPERX DEBUGGING: S1 mapReduceTuple %d generating %d " +
-                "messages %d ms")
-                .format(i, activeMsg, System.currentTimeMillis() - start))
+            logInfo("HYPERX DEBUGGING: %d generates %d messages in %d ms"
+                .format(i, activeMsg,
+                    (System.currentTimeMillis() - start).toInt))
 
             // unpersist old hypergraphs, vertices, and messages
             oldMsg.unpersist(blocking = false)

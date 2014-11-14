@@ -9,24 +9,23 @@ import scala.collection.mutable
 
 class GreedyPartition extends PartitionStrategy{
     override private[partition] def search(input: RDD[String]): Unit = {
-        hRDD = input.coalesce(k / parallelism, shuffle = true)
+        hRDD = input.coalesce(k, shuffle = true)
                 .mapPartitionsWithIndex({(i, p) =>
             val demands = Array.fill(k)(new mutable.HashSet[VertexId]())
             val degrees = Array.fill(k)(0)
             val onepass = p.map{h =>
+                val hSet = HyperUtils.iteratorFromHString(h).toSet
                 val pid = (0 until k).map(i =>
                     (i, demands(i).size * costDemand +
                         degrees(i) * costDegree)).minBy(_._2)._1
+
                 HyperUtils.iteratorFromHString(h).foreach(demands(pid).add)
-                //degrees(pid) += HyperUtils.countDegreeFromHString(h)
-                val pair = HyperUtils.countDetailDegreeFromHString(h)
-                degrees(pid) += effectiveCount(pair._1, pair._2).toInt
+                degrees(pid) += HyperUtils.countDegreeFromHString(h)
                 (h, pid)
             }
             // todo: a loop
             onepass.map{h =>
-                val pair = HyperUtils.countDetailDegreeFromHString(h._1)
-                val count = effectiveCount(pair._1, pair._2).toInt
+                val count = HyperUtils.countDegreeFromHString(h._1)
                 val extraDemand = (0 until k).map(i =>
                     count - HyperUtils.iteratorFromHString(h._1)
                         .count(demands(i).contains))
@@ -47,7 +46,7 @@ class GreedyPartition extends PartitionStrategy{
                 }
                 (h._1, newPid)
             }
-        })
+        }).cache()
 
         val demands = hRDD.map(h =>
             Tuple2(h._2, HyperUtils.iteratorFromHString(h._1).toSet))
@@ -55,7 +54,7 @@ class GreedyPartition extends PartitionStrategy{
         val broadcastDemands = hRDD.context.broadcast(demands)
 
         vRDD = hRDD.flatMap(h => HyperUtils.iteratorFromHString(h._1))
-            .distinct(k / parallelism).mapPartitionsWithIndex{(i, p) =>
+            .distinct(k).mapPartitionsWithIndex{(i, p) =>
             val locals = Array.fill(k)(0)
             p.map{v =>
                 val pid = (0 until k).map(i =>
@@ -64,12 +63,6 @@ class GreedyPartition extends PartitionStrategy{
                 locals(pid) += 1
                 (v, pid)
             }.toIterator
-        }
+        }.cache()
     }
-
-    private def effectiveCount(src: Int, dst: Int): Double ={
-        src * effectiveSrc + dst * effectiveDst
-    }
-
-    private val parallelism = 1
 }

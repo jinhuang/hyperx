@@ -62,7 +62,6 @@ class ReplicatedVertexView[VD: ClassTag, ED: ClassTag](
         val shipSrc = includeSrc && !hasSrcIds
         val shipDst = includeDst && !hasDstIds
         if (shipSrc || shipDst) {
-            logInfo("HYPERX DEBUGGING: replicatedVertexView.upgrade")
             val shippedVerts: RDD[(Int, VertexAttributeBlock[VD])] =
                 vertices.shipVertexAttributes(shipSrc, shipDst).setName(
                     ("ReplicatedVertexView.upgrade(%s, %s) - " +
@@ -72,12 +71,12 @@ class ReplicatedVertexView[VD: ClassTag, ED: ClassTag](
 
             val newHyperedges: HyperedgeRDD[ED, VD] =
                 hyperedges.withPartitionsRDD(
-                    hyperedges.partitionsRDD.zipPartitions(shippedVerts, preservesPartitioning = true)({
+                    hyperedges.partitionsRDD.zipPartitions(shippedVerts)({
                         (hPartIter, shippedVertsIter) =>
                             val ret = hPartIter.map {
                                 case (pid, hyperedgePartition) => {
                                     val newPartition = hyperedgePartition
-                                        .updateVertices(shippedVertsIter
+                                        .updateVertices(shippedVertsIter.filter(_._1 == pid)
                                             .flatMap[(VertexId, VD)](
                                                 _._2.iterator))
                                     (pid, newPartition)
@@ -201,11 +200,11 @@ class ReplicatedVertexView[VD: ClassTag, ED: ClassTag](
                 .partitionBy(hyperedges.partitioner.get)
 
         val newHyperedges = hyperedges.withPartitionsRDD[ED, VD](
-            hyperedges.partitionsRDD.zipPartitions(shippedVerts, preservesPartitioning = true) {
+            hyperedges.partitionsRDD.zipPartitions(shippedVerts) {
             (hPartIter, shippedVertsIter) => hPartIter.map {
                 case (pid, hyperedgePartition) =>
                     (pid, hyperedgePartition.updateVertices(
-                        shippedVertsIter.flatMap{shipped =>
+                        shippedVertsIter.filter(_._1 == pid).flatMap{shipped =>
                             shipped._2.iterator}))
             }
         })

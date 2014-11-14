@@ -302,4 +302,10 @@ object HyperXOpenHashSet {
 
   private val grow = grow1 _
   private val move = move1 _
+
+  private implicit def toLongBitSet(hash: HyperXOpenHashSet[Long]): HyperXLongBitSet = {
+    val set = new HyperXLongBitSet
+    hash.iterator.foreach(set.add)
+    set
+  }
 }
