@@ -1,11 +1,9 @@
 package org.apache.spark.hyperx.lib
 
-import org.apache.spark.graphx.GraphLoader
-import org.apache.spark.graphx.lib.PageRank
 import org.apache.spark.hyperx.partition._
 import org.apache.spark.hyperx.{Hypergraph, HypergraphLoader}
 import org.apache.spark.storage.StorageLevel
-import org.apache.spark.{Logging, SparkConf, SparkContext, storage}
+import org.apache.spark.{Logging, SparkConf, SparkContext}
 
 import scala.collection.mutable
 
@@ -141,9 +139,6 @@ object Analytics extends Logging {
                 logInfo("Result " + sum)
 
             case "part" =>
-                println("==========================")
-                println("| Partitioning |")
-                println("==========================")
 
                 val sc = new SparkContext(conf.setAppName("Partitioning (" +
                         fname + ")"))
@@ -157,9 +152,6 @@ object Analytics extends Logging {
                 sc.stop()
 
             case "rw" =>
-                println("==========================")
-                println("| Random Walks |")
-                println("==========================")
 
                 conf.set("hyperx.debug.k", numPart.toString)
                 val sc = new SparkContext(conf.setAppName("Random Walks (" +
@@ -180,10 +172,8 @@ object Analytics extends Logging {
                 sc.stop()
 
             case "lp" =>
-                println("==========================")
-                println("| Label Propagation |")
-                println("==========================")
 
+                conf.set("hyperx.debug.k", numPart.toString)
                 val sc = new SparkContext(conf.setAppName("Label Propagation (" +
                         fname + ")"))
 
@@ -199,9 +189,6 @@ object Analytics extends Logging {
                 sc.stop()
 
             case "bc" =>
-                println("==========================")
-                println("| Betweenness Centrality |")
-                println("==========================")
 
                 val sc = new SparkContext(conf.setAppName("Between Centrality (" +
                         fname + ")"))
@@ -215,26 +202,38 @@ object Analytics extends Logging {
                 ret.filter(v => v._2 > 0.0).saveAsTextFile(outputPath + "bc")
                 sc.stop()
 
-            case "graph" =>
-                println("==========================")
-                println("| Graph Test |")
-                println("==========================")
+            case "statistics" =>
+                val sc = new SparkContext(conf.setAppName("Statistics (" + fname + ")"))
 
-                val sc = new SparkContext(conf.setAppName("Graph Test (" +
-                    fname + ")"))
-                val graph = GraphLoader.edgeListFile(sc, fname,
-                    canonicalOrientation = false, numPart,
-                    storage.StorageLevel.MEMORY_ONLY, vertexStorageLevel).cache()
+                val hypergraph = loadHypergraph(sc, fname, vertexInput,
+                    fieldSeparator, weighted, numPart, inputMode,
+                    partitionStrategy, hyperedgeStorageLevel, vertexStorageLevel).cache()
 
-                val rw = PageRank.run(graph, 100)
-                rw.vertices.saveAsTextFile(test_path + "rw_graph")
+                val incidents = hypergraph.incidents
+                incidents.saveAsTextFile(outputPath + "statistics")
 
-                println("==========================")
-                println("GRAPHX: Number of vertices: " +
-                        graph.vertices.count)
-                println("GRAPHX: Number of edges: " +
-                        graph.edges.count)
-                println("==========================")
+                sc.stop()
+
+            case "laplacian" =>
+                val sc = new SparkContext(conf.setAppName("Laplacian (" + fname + ")"))
+
+                val hypergraph = loadHypergraph(sc, fname, vertexInput,
+                    fieldSeparator, weighted, numPart, inputMode,
+                    partitionStrategy, hyperedgeStorageLevel, vertexStorageLevel).cache()
+
+                val laplacian = hypergraph.laplacian
+                laplacian.saveAsTextFile(outputPath + "laplacian")
+
+                sc.stop()
+            case "spectral" =>
+                val sc = new SparkContext(conf.setAppName("Spectral (" + fname + ")"))
+
+                val hypergraph = loadHypergraph(sc, fname, vertexInput,
+                    fieldSeparator, weighted, numPart, inputMode,
+                    partitionStrategy, hyperedgeStorageLevel, vertexStorageLevel).cache()
+                val maxIter = options.remove("maxIter").map(_.toInt).getOrElse(10)
+                val ret = SpectralLearning.run(hypergraph, 3, maxIter, 1e-6)
+                ret._2.saveAsTextFile(outputPath + "spectral")
 
                 sc.stop()
         }

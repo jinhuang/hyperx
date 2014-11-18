@@ -4,9 +4,10 @@ import breeze.linalg.{DenseMatrix => BDM, DenseVector => BDV}
 import breeze.numerics.{sqrt => brzSqrt}
 import org.apache.spark.SparkContext
 import org.apache.spark.hyperx.util.collection.HyperXPrimitiveVector
-import org.apache.spark.hyperx.{Hypergraph, VertexId, VertexRDD}
-import org.apache.spark.mllib.linalg.distributed.RowMatrix
+import org.apache.spark.hyperx.{Hypergraph, VertexId}
 import org.apache.spark.mllib.linalg._
+import org.apache.spark.mllib.linalg.distributed.RowMatrix
+import org.apache.spark.rdd.RDD
 
 import scala.reflect.ClassTag
 import scala.util.Random
@@ -18,17 +19,17 @@ import scala.util.Random
  */
 object SpectralLearning {
 
-    type VertexMatrix = VertexRDD[Map[VertexId, Double]]
-    type BasisMatrix = VertexRDD[Array[Double]]
+    type VertexMatrix = RDD[(VertexId, (Array[VertexId], Array[Double]))]
+    type BasisMatrix = RDD[(VertexId, Array[Double])]
 
     def run[VD: ClassTag, ED: ClassTag](hypergraph: Hypergraph[VD, ED],
-        eigenK: Int, numIter: Int, tol: Double): (Array[Double], VertexRDD[Array[Double]]) = {
+        eigenK: Int, numIter: Int, tol: Double): (Array[Double], RDD[(VertexId, Array[Double])]) = {
         val laplacian = hypergraph.laplacian
         lanczosSO(laplacian, eigenK, numIter, tol)
     }
 
     def lanczosSO(matrix: VertexMatrix, eigenK: Int,
-        maxIter: Int, tol: Double): (Array[Double], VertexRDD[Array[Double]]) = {
+        maxIter: Int, tol: Double): (Array[Double], RDD[(VertexId, Array[Double])]) = {
 
         val n = matrix.count().toInt
         val sc = matrix.context
@@ -36,7 +37,7 @@ object SpectralLearning {
 
         // randomize a n-vector
         val alpha, beta = new HyperXPrimitiveVector[Double]()
-        var allV: BasisMatrix = matrix.mapValues(each => Array.empty)
+        var allV: BasisMatrix = matrix.map(each => (each._1, Array.empty[Double]))
         var prevAlpha, currAlpha, prevBeta, currBeta = 0.0
         var prevV, currV = Vectors.zeros(n)
         val b = randomVector(n)
@@ -147,7 +148,11 @@ object SpectralLearning {
      * @return
      */
     private def addVectorToBasisMatrix(vector: Vector, matrix: BasisMatrix): BasisMatrix = {
-        matrix.mapValues((vid, array)=> (array.iterator ++ Iterator(vector(vid.toInt))).toArray)
+        matrix.map(each => (each._1, {
+            val vid = each._1
+            val array = each._2
+            array.iterator ++ Iterator(vector(vid.toInt))
+        }.toArray))
     }
 
 
@@ -213,9 +218,17 @@ object SpectralLearning {
      *
      * @todo need to see how to take care of symmetric matrix stored in a unconventional manner
      */
-    private def *# (matrix: VertexMatrix, vector: Vector): VertexRDD[Double] = {
-        val map = vector.toArray.zipWithIndex.toMap
-        matrix.mapValues(old => old.map(v => v._2 * map(v._1)).sum)
+    private def *# (matrix: VertexMatrix, vector: Vector): RDD[(VertexId, Double)] = {
+        val map = vector.toArray.zipWithIndex.map(v => (v._2, v._1)).toMap
+        matrix.map{each =>
+            val arrays = each._2
+            val size = arrays._1.size
+            (each._1, (0 until size).map{i =>
+                val vid = arrays._1(i)
+                val value = arrays._2(i)
+                value * map(vid.toInt)
+            }.sum)
+        }
     }
 
     /**
@@ -226,7 +239,10 @@ object SpectralLearning {
      */
     private def *(matrix: BasisMatrix, vector: Vector): Vector = {
         val i = vector.size
-        Vectors.dense(matrix.mapValues(old => (0 until i).map(j => old(j) * vector(j)).sum).collect().sortBy(_._1).map(_._2))
+        Vectors.dense(matrix.map(each => {
+            val old = each._2
+            (each._1, (0 until i).map(j => old(j) * vector(j)).sum)
+        }).collect().sortBy(_._1).map(_._2))
     }
 
     /**
@@ -235,13 +251,16 @@ object SpectralLearning {
      * @param vectors an i * m matrix, assuming i and m are both small
      * @return
      */
-    private def *# (matrix: BasisMatrix, vectors: Array[Vector]): VertexRDD[Array[Double]] = {
+    private def *# (matrix: BasisMatrix, vectors: Array[Vector]): RDD[(VertexId, Array[Double])] = {
         val numVectors = vectors.size
         if (numVectors == 0){
             matrix
         } else {
             val i = vectors(0).size
-            matrix.mapValues(old => (0 until i).map(j => (0 until numVectors).map(v => old(j) * vectors(v)(j)).sum).toArray)
+            matrix.map(each => {
+                val old = each._2
+                (each._1, (0 until i).map(j => (0 until numVectors).map(v => old(j) * vectors(v)(j)).sum).toArray)
+            })
         }
     }
 

@@ -194,38 +194,50 @@ object HyperPregel extends Logging {
             logInfo(("HYPERX DEBUGGING: scan: %d scheduling and " +
                 "shipping tasks: %d").format(
                     scanTime, - mrStart + sStart.map(_.value).min - scanTime))
-            logInfo("HYPERX DEBUGGING: active set (pipeline): %d"
-                .format(sComplete.map(_.value).max - sStart.map(_.value).min))
-            logInfo(("HYPERX DEBUGGING: active set details : ship avg" +
-                " %d min %d max %d std %d zip avg %d min %d max %d std" +
-                " %d std percent %f")
-                    .format(HyperUtils.avg(sVals).toInt, sVals.min, sVals.max,
-                    HyperUtils.dvt(sVals).toInt, HyperUtils.avg(zVals).toInt,
-                    zVals.min, zVals.max, HyperUtils.dvt(zVals).toInt,
-                    HyperUtils.dvt(zVals) / HyperUtils.avg(zVals)))
-            logInfo(("HYPERX DEBUGGING: map (pipeline): %d starts %d completes" +
-                " %d avg %d min %d max %d std %d std percent %f")
-                .format(mComplete.map(_.value).max - mStart.map(_.value).min,
-                    - mrStart + mStart.map(_.value).min,
-                    - mrStart + mComplete.map(_.value).max,
-                    HyperUtils.avg(mVals).toInt, mVals.min, mVals.max,
-                    HyperUtils.dvt(mVals).toInt,
-                    HyperUtils.dvt(mVals) / HyperUtils.avg(mVals)))
-            logArray("map (details) src", msVals)
-            logArray("map (details) dst", mdVals)
-            logArray("map (details) srcDegree", msdVals)
-            logArray("map (details) dstDegree", mddVals)
-            logArray("combine", cDuration)
-            logArray("combine (details) vertex count", ccVals)
-            logInfo(("HYPERX DEBUGGING: reduce (pipeline): %d starts %d " +
-                "completes %d avg %d min %d max %d std %d std percent %f")
-                .format(rComplete.map(_.value).max - rStart.map(_.value).min,
+            logInfo("HYPERX DEBUGGING: active set start %d completes %d".format(sStart.map(_.value - mrStart).min, sComplete.map(_.value - mrStart).max))
+//            val sStartString = sStart.map(_.value - mrStart)
+//            val sCompleteString = sComplete.map(_.value - mrStart)
+//            logInfo("HYPERX DEBUGGING: active set start " + (0 until k).map(i => i + ": " + sStartString(i).toString).reduce(_ + "; " + _))
+//            logInfo("HYPERX DEBUGGING: active set complete " + (0 until k).map(i => i + ": " + sCompleteString(i).toString).reduce(_ + "; " + _))
+            val sActual = (0 until k).map{i => (sComplete(i).value - sStart(i).value).toInt}.toArray
+            logArray("active details", sActual)
+//            logInfo(("HYPERX DEBUGGING: active set details : ship avg" +
+//                " %d min %d max %d std %d zip avg %d min %d max %d std" +
+//                " %d std percent %f")
+//                    .format(HyperUtils.avg(sVals).toInt, sVals.min, sVals.max,
+//                    HyperUtils.dvt(sVals).toInt, HyperUtils.avg(zVals).toInt,
+//                    zVals.min, zVals.max, HyperUtils.dvt(zVals).toInt,
+//                    HyperUtils.dvt(zVals) / HyperUtils.avg(zVals)))
+            logInfo(("HYPERX DEBUGGING: map starts %d completes" +
+                " %d")
+                .format(- mrStart + mStart.map(_.value).min, - mrStart + mComplete.map(_.value).max))
+//            val mStartString = mStart.map(_.value - mrStart)
+//            val mCompleteString = mComplete.map(_.value - mrStart)
+//            logInfo("HYPERX DEBUGGING: map start " + (0 until k).map(i => i + ": " + mStartString(i).toString()).reduce(_+ "; " + _))
+//            logInfo("HYPERX DEBUGGING: map complete " + (0 until k).map(i => i + ": " + mCompleteString(i).toString()).reduce(_ + "; " + _))
+//            logArray("map (details) src", msVals)
+//            logArray("map (details) dst", mdVals)
+//            logArray("map (details) srcDegree", msdVals)
+//            logArray("map (details) dstDegree", mddVals)
+            val mActual = (0 until k).map{i => (mComplete(i).value - mStart(i).value).toInt}.toArray
+            logArray("map details", mActual)
+            logInfo("HYPERX DEBUGGING: combine starts %d completes %d".format(cStart.map(_.value - mrStart).min, cComplete.map(_.value - mrStart).max))
+            val cActual = (0 until k).map{i => (cComplete(i).value - cStart(i).value).toInt}.toArray
+            logArray("combine details", cActual)
+//            logArray("combine (details) vertex count", ccVals)
+            logInfo(("HYPERX DEBUGGING: reduce starts %d " +
+                "completes %d")
+                .format(
                     - mrStart + rStart.map(_.value).min,
-                    - mrStart + rComplete.map(_.value).max,
-                    HyperUtils.avg(rVals).toInt, rVals.min, rVals.max,
-                    HyperUtils.dvt(rVals).toInt,
-                    HyperUtils.dvt(rVals) / HyperUtils.avg(rVals)))
-            logArray("reduce (details) vertex count", rcVals)
+                    - mrStart + rComplete.map(_.value).max))
+//            val rStartString = rStart.map(_.value - mrStart)
+//            val rCompleteString = rComplete.map(_.value - mrStart)
+//            logInfo("HYPERX DEBUGGING: reduce start " + (0 until k).map(i => i + ": " + rStartString(i).toString()).reduce(_ + "; " + _))
+//            logInfo("HYPERX DEBUGGING: reduce complete " + (0 until k).map(i => i + ": " + rCompleteString(i).toString()).reduce(_ + "; " + _))
+            val rActual = (0 until k).map{i => (rComplete(i).value - rStart(i).value).toInt}.toArray
+            logArray("reduce details", rActual)
+
+//            logArray("reduce (details) vertex count", rcVals)
 
             // unpersist old hypergraphs, vertices, and messages
             oldMsg.unpersist(blocking = false)

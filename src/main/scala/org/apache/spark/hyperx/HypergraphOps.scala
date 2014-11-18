@@ -1,5 +1,8 @@
 package org.apache.spark.hyperx
 
+import org.apache.spark.Logging
+import org.apache.spark.hyperx.util.collection.{HyperXOpenHashMap,
+HyperXPrimitiveVector}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.util.collection.BitSet
 
@@ -19,7 +22,7 @@ import scala.util.Random
  *            Forked from GraphX 2.10, modified by Jin Huang
  */
 class HypergraphOps[VD: ClassTag, ED: ClassTag](hypergraph: Hypergraph[VD,
-        ED]) extends Serializable {
+        ED]) extends Serializable with Logging {
 
     /** The number of hyperedges in the hypergraph. */
     @transient lazy val numHyperedges: Long = hypergraph.hyperedges.partitionsRDD.map(p => p._2.data.size).reduce(_ + _)
@@ -80,7 +83,7 @@ class HypergraphOps[VD: ClassTag, ED: ClassTag](hypergraph: Hypergraph[VD,
     @transient lazy val hDegrees: RDD[(HyperedgeId, Int)] =
         hyperedgeDegreeRDD(HyperedgeDirection.Either).setName("HypergraphOps.hDegrees")
 
-    @transient lazy val laplacian: VertexRDD[Map[VertexId, Double]] =
+    @transient lazy val laplacian: RDD[(VertexId, (Array[VertexId], Array[Double]))] =
         evaluateLaplacian()
 
     /**
@@ -410,16 +413,20 @@ class HypergraphOps[VD: ClassTag, ED: ClassTag](hypergraph: Hypergraph[VD,
         }
     }
 
-    private def evaluateLaplacian(): VertexRDD[Map[VertexId, Double]] = {
+    private def evaluateLaplacian(): RDD[(VertexId, (Array[VertexId], Array[Double]))] = {
 
+        var start = System.currentTimeMillis()
         // sqrt diagonal matrix
         val D = hypergraph.outerJoinVertices(hypergraph.incidents){(vid, vdata, deg) =>
             deg match {
-                case someDeg: Int =>
-                    1.0 / Math.sqrt(someDeg)
+                case someDeg: Some[Int] =>
+                    1.0 / Math.sqrt(someDeg.get)
                 case None =>
                     0.0
-            }}
+            }}.cache()
+        val dCount = D.vertices.count()
+        logInfo("HYPERX DEBUGGING: computed D %d in %d ms".format(dCount, System.currentTimeMillis() - start))
+        start = System.currentTimeMillis()
 
         // multiplied by incident matrix
         // essentially the tuple view (as a tuple corresponds to a hyperedge with
@@ -435,7 +442,7 @@ class HypergraphOps[VD: ClassTag, ED: ClassTag](hypergraph: Hypergraph[VD,
         // for each pair of vertices co-appear in at least one hyperedge, compute
         // the sum of values on all the co-appearing hyperedges
         // essentially aggregate by neighboring pair
-        val DHWH = DHW.mapReduceTuples[Map[VertexId, Double]]({tuple =>
+        val DHWH = DHW.mapReduceTuples[(Array[VertexId], Array[Double])]({tuple =>
 
             // just in case ED is not double
             val weight = tuple.attr match {
@@ -447,61 +454,103 @@ class HypergraphOps[VD: ClassTag, ED: ClassTag](hypergraph: Hypergraph[VD,
 
             // generate co-appearance pairs, routed to one of the vertices while avoiding
             // duplicate computations on symmetry pairs
-            (tuple.srcAttr.keySet.iterator ++ tuple.dstAttr.keySet.iterator).flatMap{ v =>
-                val vVal = if (tuple.srcAttr.hasKey(v)) tuple.srcAttr(v) else tuple.dstAttr(v)
-                (tuple.srcAttr.keySet.iterator ++ tuple.dstAttr.keySet.iterator).map{ u =>
-                    val uVal = if (tuple.srcAttr.hasKey(u)) tuple.srcAttr(u) else tuple.dstAttr(u)
-                    val even = (u + v) % 2 == 0
-                    if (u <= v) { // symmetric pair only computes once
-                        if (even) { // balance the workload on different vertices
-                            (u, Map(v, uVal * weight))
-                        } else {
-                            (v, Map(u, vVal * weight))
-                        }
-                    } else null.asInstanceOf[(VertexId, Map[VertexId, Double])]
+            val map = new HyperXOpenHashMap[VertexId, HyperXOpenHashMap[VertexId, Double]]()
+            (tuple.srcAttr.iterator ++ tuple.dstAttr.iterator).foreach{u =>
+                val idU = u._1
+                val valU = u._2 * weight
+                (tuple.srcAttr.iterator ++ tuple.dstAttr.iterator).filter(_._1 >= idU).foreach{v =>
+                    val idV = v._1
+                    val valV = v._2 * weight
+                    var dst = idV
+                    var attrId = idU
+                    var attrVal = valV
+                    if ((idU + idV) % 2 ==0) {
+                        dst = idU
+                        attrId = idV
+                        attrVal = valU
+                    }
+                    if (!map.hasKey(dst)) {
+                        map.update(dst, new HyperXOpenHashMap[VertexId, Double](8))
+                    }
+                    accu(map(dst), attrId, attrVal)
                 }
-            }.toIterator
-        }, mergeMap)
+            }
+            map.map { each =>
+                val idVector = new HyperXPrimitiveVector[VertexId]()
+                val valVector = new HyperXPrimitiveVector[Double]()
+                each._2.iterator.foreach{v =>
+                    idVector += v._1
+                    valVector += v._2
+                }
+                (each._1, (idVector.trim().array, valVector.trim().array))
+            }.iterator
+        }, mergeArray).cache()
+        val dhwhCount = DHWH.count()
+        logInfo("HYPERX DEBUGGING: computed DHWH %d in %d ms".format(dhwhCount, System.currentTimeMillis() - start))
+        start = System.currentTimeMillis()
 
         // multiplied by degree matrix
         // scale each pair value by its corresponding degree
-        val DHWHD = D.outerJoinVertices(DHWH) { (vid, vdata, msg) => // aggregate by one of the vertex
-            msg match {
-                case map: Map[VertexId, Double] =>
-                    map.mapValues(old => 0.5 * old * vdata)
-                case None =>
-                    Map()
-            }
-        }.mapReduceTuples[Map[VertexId, Double]]({tuple => // reduce by the other vertex
-            val src = tuple.srcAttr.flatMap(u => u._2.map(v => (v._1, Map(u._1 -> v._2)))).iterator
-            val dst = tuple.dstAttr.flatMap(u => u._2.map(v => (v._1, Map(u._1 -> v._2)))).iterator
-            src ++ dst
-        }, mergeMap)
-
-
-        // subtracted from the identity matrix
-        val laplacian = DHWHD.mapValues{(vid, map) =>
-            if (map.contains(vid)) {// take care diagonal self pairs
-                map.map{v =>
-                    val oldVal = v._2
-                    val newVal = if (v._1 == vid) 1.0 - oldVal else 0.0 - oldVal
-                    v._1 -> newVal
-                }.toMap
-            } else {
-                map.mapValues(old => 0 - old)
-            }
+        start = System.currentTimeMillis()
+        val localIncident = D.vertices.filter(v => v._2 > 0.0).map(v => (v._1.toInt, v._2)).collect().toMap
+        val bcIncident = DHWH.context.broadcast(localIncident)
+        val laplacian = DHWH.mapValues{each =>
+            val size = each._1.size
+            (each._1, (0 until size).map{i =>
+                val vid = each._1(i).toInt
+                each._2(i) * bcIncident.value(vid)
+            }.toArray)
         }
+        .map{each => // subtracted from the identity matrix
+            val u = each._1
+            val size = each._2._1.size
+            val data = (each._2._1, (0 until size).map{i =>
+                val v = each._2._1(i)
+                if (u == v) {
+                    1.0 - each._2._2(i)
+                } else {
+                    0.0 - each._2._2(i)
+                }
+            }.toArray)
 
-        // the laplacian I - 0.5 D^(-0.5)HWH^(T)D^(-0.5) with symmetric entries
-        // de-duplicated
+            (u, data)
+        }
+        logInfo("HYPERX DEBUGGING: computed laplacian in %d ms".format(System.currentTimeMillis() - start))
+
         laplacian
     }
 
-    private def mergeMap(a: Map[VertexId, Double], b: Map[VertexId, Double]): Map[VertexId, Double] = {
-        (a.keySet ++ b.keySet).map { v =>
-            val aVal = a.getOrElse(v, 0.0)
-            val bVal = b.getOrElse(v, 0.0)
-            v -> (aVal + bVal)
-        }.toMap
+    private def mergeIter(a: (Iterator[VertexId], Iterator[Double]), b: (Iterator[VertexId], Iterator[Double])): (Iterator[VertexId], Iterator[Double]) = {
+        val map = new HyperXOpenHashMap[VertexId, Double]()
+        a._1.foreach{u =>
+            accu(map, u, a._2.next())
+        }
+        b._1.foreach{u =>
+            accu(map, u, b._2.next())
+        }
+        map.iterator.map(each => (Iterator(each._1), Iterator(each._2))).reduce((a, b) => (a._1 ++ b._1, a._2 ++ b._2))
+    }
+
+    private def mergeArray(a: (Array[VertexId], Array[Double]), b: (Array[VertexId], Array[Double])): (Array[VertexId], Array[Double]) = {
+        val seq = (0 until a._1.size).map{i =>
+            (a._1(i), a._2(i))
+        }.iterator ++ (0 until b._1.size).map{i =>
+            (b._1(i), b._2(i))
+        }.groupBy(_._1).mapValues(iter => iter.map(_._2).sum)
+        val idVector = new HyperXPrimitiveVector[VertexId]()
+        val valVector = new HyperXPrimitiveVector[Double]()
+        seq.foreach{v =>
+            idVector += v._1
+            valVector += v._2
+        }
+        (idVector.trim().array, valVector.trim().array)
+    }
+
+    private def accu(map: HyperXOpenHashMap[VertexId, Double], key: VertexId, value: Double): Unit = {
+        if (map.hasKey(key)) {
+            map.update(key, map(key) + value)
+        } else {
+            map.update(key, value)
+        }
     }
 }

@@ -119,6 +119,9 @@ Serializable {
     def mapVertices[VD2: ClassTag](map: (VertexId,
             VD) => VD2): Hypergraph[VD2, ED]
 
+    def mapReduceVertices[VD2: ClassTag](filter: ((VertexId, VD)) => Boolean, map: ((VertexId, VD)) => Iterator[(VertexId, VD2)],
+        reduce: (VD2, VD2) => VD2) : RDD[(VertexId, VD2)]
+
     /**
      * Transform each hyperedge attribute in the hypergraph using the map
      * function. The

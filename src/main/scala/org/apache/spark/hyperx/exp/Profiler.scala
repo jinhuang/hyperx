@@ -1,15 +1,55 @@
 package org.apache.spark.hyperx.exp
 
+import java.io.{BufferedReader, FileReader}
+
+import org.apache.spark.hyperx.VertexId
+import org.apache.spark.hyperx.util.collection.HyperXOpenHashMap
+
 object Profiler {
 
     type HyperedgeId = Int
 
     def main(args: Array[String]): Unit = {
 
-        val map = (0L until 100000L).map(i => i -> i).toMap
+//        val size = 662998
+//
+//        val map = new HyperXOpenHashMap[VertexId, new HyperXOpenHashMap[]()]()
+
+//        val file = Source.fromFile("/run/media/soone/Data/hyperx/result/statistics/part-00001")
+//        val ret = file.getLines().map{line =>
+//            val array = line.replace("(", "").replace(")", "").split(",")
+//            val id = array(0).toLong
+//            val size = array(1).toInt
+//            (id, Array.fill(size)(0L), Array.fill(size)(0.0))
+//        }
+//        println(ret.map(i => i._2.size).sum)
+//
+//        val stop = readLine()
+//        println(ret.map(i => 1).reduce(_ + _))
+        val files = new java.io.File("/run/media/soone/Data/hyperx/result/statistics").listFiles()
+
+        val map = new HyperXOpenHashMap[VertexId, HyperXOpenHashMap[VertexId, Double]]()
+        files.foreach{ file =>
+            val reader = new BufferedReader(new FileReader(file))
+            var line = reader.readLine()
+
+            while(line != null) {
+                val array = line.replace("(", "").replace(")", "").split(",")
+                val id = array(0).toLong
+                val size = array(1).toInt
+                map.update(id, new HyperXOpenHashMap[VertexId, Double]())
+                val thisMap = map(id)
+                (0 until size).foreach{i =>
+                    thisMap.update(i.toLong, i.toDouble)
+                }
+                line = reader.readLine()
+            }
+        }
 
         val stop = readLine()
         println(map.map(i => 1).reduce(_ + _))
+//        println(allPairs.map(i => 1).reduce(_ + _))
+
         // comparing two maps with map of a two-tuple
 //        val mapA = new HyperXOpenHashMap[Int, Int]()
 //        val mapB = new HyperXOpenHashMap[Int, Int]()

@@ -498,8 +498,6 @@ object VertexRDD extends Logging {
      *                   joined with
      * @param defaultVal the vertex attribute to use when creating missing
      *                   vertices
-     * @param mergeFunc the commutative, associative duplicate vertex
-     *                  attribute merge
      * @tparam VD the vertex attribute type
      * @return a new `VertexRDD`
      */

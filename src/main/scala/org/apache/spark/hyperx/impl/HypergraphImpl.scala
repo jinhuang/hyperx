@@ -99,6 +99,12 @@ class HypergraphImpl[VD: ClassTag, ED: ClassTag] protected(
         }
     }
 
+    override def mapReduceVertices[VD2: ClassTag](filter: ((VertexId, VD)) => Boolean, map: ((VertexId, VD)) => Iterator[(VertexId, VD2)],
+        reduce: (VD2, VD2) => VD2): RDD[(VertexId, VD2)] = {
+        val newVerts = vertices.filter(filter).flatMap(map)
+        newVerts.reduceByKey(reduce)
+    }
+
 //    override def mapHyperedges[ED2: ClassTag](
 //        f: (PartitionId,Iterator[Hyperedge[ED]]) => Iterator[ED2])
 //    : Hypergraph[VD, ED2] = {

@@ -46,7 +46,7 @@ private[hyperx] object EigenValueDecomposition {
      *       for more details). The maximum number of Arnoldi update iterations is set to 300 in this
      *       function.
      */
-    private[mllib] def symmetricEigs(
+    private[hyperx] def symmetricEigs(
                                         mul: BDV[Double] => BDV[Double],
                                         n: Int,
                                         k: Int,
