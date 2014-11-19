@@ -2,9 +2,10 @@ package org.apache.spark.hyperx.lib
 
 import breeze.linalg.{DenseMatrix => BDM, DenseVector => BDV}
 import breeze.numerics.{sqrt => brzSqrt}
-import org.apache.spark.SparkContext
-import org.apache.spark.hyperx.util.collection.HyperXPrimitiveVector
-import org.apache.spark.hyperx.{Hypergraph, VertexId}
+import org.apache.spark.{Logging, SparkContext}
+import org.apache.spark.SparkContext._
+import org.apache.spark.hyperx.Hypergraph
+import org.apache.spark.hyperx.util.collection.{HyperXOpenHashMap, HyperXPrimitiveVector}
 import org.apache.spark.mllib.linalg._
 import org.apache.spark.mllib.linalg.distributed.RowMatrix
 import org.apache.spark.rdd.RDD
@@ -16,20 +17,26 @@ import scala.util.Random
  * Given a hypergraph, first compute its normalized Laplacian, then computes
  * the largest k eigen vectors and eigen values
  * (via Lanczos-Selective Orthogonalization) for clustering and embedding
+ *
+ * Only supports int vertices
  */
-object SpectralLearning {
+object SpectralLearning extends Logging{
 
-    type VertexMatrix = RDD[(VertexId, (Array[VertexId], Array[Double]))]
-    type BasisMatrix = RDD[(VertexId, Array[Double])]
+    type VertexMatrix = RDD[(VID, (Array[VID], Array[Double]))]
+    type BasisMatrix = RDD[(VID, Array[Double])]
+    type VID = Int
+
+    var sc: SparkContext = _
 
     def run[VD: ClassTag, ED: ClassTag](hypergraph: Hypergraph[VD, ED],
-        eigenK: Int, numIter: Int, tol: Double): (Array[Double], RDD[(VertexId, Array[Double])]) = {
-        val laplacian = hypergraph.laplacian
+        eigenK: Int, numIter: Int, tol: Double): (Array[Double], RDD[(VID, Array[Double])]) = {
+        sc = hypergraph.vertices.context
+        val laplacian = hypergraph.laplacian.map(each => (each._1.toInt, (each._2._1.map(_.toInt), each._2._2)))
         lanczosSO(laplacian, eigenK, numIter, tol)
     }
 
     def lanczosSO(matrix: VertexMatrix, eigenK: Int,
-        maxIter: Int, tol: Double): (Array[Double], RDD[(VertexId, Array[Double])]) = {
+        maxIter: Int, tol: Double): (Array[Double], RDD[(VID, Array[Double])]) = {
 
         val n = matrix.count().toInt
         val sc = matrix.context
@@ -47,6 +54,7 @@ object SpectralLearning {
 
         // loop
         while(i == 0 || !~=(currBeta, 0.0)) {
+            val start = System.currentTimeMillis()
             var v = *(matrix, currV)    // parallel
             currAlpha = vectorInner(currV, v)
             val prevBetaV = prevV.toArray.map(d => d * prevBeta)
@@ -55,7 +63,9 @@ object SpectralLearning {
             currBeta = vectorL2Norm(v)  // in-core
             alpha += currAlpha
             beta += currBeta
-            val t = tridiagonal(Vectors.dense(alpha.trim().array), Vectors.dense(beta.trim().array), sc)
+            prevAlpha = currAlpha
+            prevBeta = currBeta
+            val t = tridiagonal(Vectors.dense(alpha.trim().array), Vectors.dense(beta.trim().array))
             val (_, eigQ) = eigenDecompose(t, eigenK, tol)
             var reflag = false
             (0 to i).foreach{j =>
@@ -69,18 +79,17 @@ object SpectralLearning {
             if (reflag) {
                 currBeta = vectorL2Norm(v)
             }
+            prevV = currV
             currV = Vectors.dense(v.toArray.map(d => d / currBeta))
             allV = addVectorToBasisMatrix(currV, allV)
             i += 1
-            prevV = currV
-            prevAlpha = currAlpha
-            prevBeta = currBeta
+            logInfo("HYPERX DEBUGGING: lanczos completed loop %d in %d ms".format(i, System.currentTimeMillis() - start))
         }
 
         val m = i
 
         // compute the eigen values and vectors
-        val t = tridiagonal(Vectors.dense(alpha.trim().array), Vectors.dense(beta.trim().array), sc)
+        val t = tridiagonal(Vectors.dense(alpha.trim().array), Vectors.dense(beta.trim().array))
         val (eigD, eigQ) = eigenDecompose(t, eigenK, tol)
         val effectiveK = if (eigenK > eigD.size) eigD.size else eigenK
         val eigVal = (0 until effectiveK).map(i => eigD(i)).toArray
@@ -105,17 +114,21 @@ object SpectralLearning {
      * @param beta the upper and lower diagonals, beta(0) is not used, i * 1
      * @return a tri-diagonal matrix, i * i
      */
-    private def tridiagonal(alpha: Vector, beta: Vector, sc: SparkContext): RowMatrix = {
-        val m = alpha.size
-        new RowMatrix(sc.parallelize(0 until m).map{i =>
-            if (i == 0) { // first row
-                Vectors.sparse(m, Array(0, 1), Array(alpha(0), beta(1)))
-            } else if (i == m - 1) { // last row
-                Vectors.sparse(m, Array(m - 2, m - 1), Array(beta(m - 1), alpha(m - 1)))
-            } else { // in-between rows
-                Vectors.sparse(m, Array(i - 1, i, i + 1), Array(beta(i), alpha(i), beta(i + 1)))
+    private def tridiagonal(alpha: Vector, beta: Vector): Matrix = {
+        val n = alpha.size
+        val values = (0 until n).flatMap{col =>
+            (0 until n).map{row =>
+                if (col == row) {
+                    alpha(col)
+                } else if (col == row - 1) {
+                    beta(row)
+                } else if (col == row + 1) {
+                    beta(col)
+                }
+                else 0.0
             }
-        })
+        }.toArray
+        Matrices.dense(n, n, values)
     }
 
     /**
@@ -127,7 +140,7 @@ object SpectralLearning {
      * @return
      */
     private def entry(matrix: Matrix, i: Int, j: Int, n: Int): Double = {
-        matrix.toArray(j * n + 1)
+        matrix.toArray(j * n + i)
     }
 
     /**
@@ -155,9 +168,11 @@ object SpectralLearning {
         }.toArray))
     }
 
-
-    private def matrixL2Norm(matrix: RowMatrix): Double = {
-        matrix.computeSVD(1, computeU = false, 1e-9).s.toArray.max
+    // via local svd
+    private def matrixL2Norm(matrix: Matrix): Double = {
+        // local svd
+        val rowMatrix = matrix2RowMatrix(matrix)
+        Linalg.computeSVD(rowMatrix, 1, computeU = false, 1e-9).s.toArray.max
     }
 
     /**
@@ -165,24 +180,21 @@ object SpectralLearning {
      * @param matrix
      * @return
      */
-    private def eigenDecompose(matrix: RowMatrix, eigenK: Int, tol : Double): (Vector, Matrix) = {
+    private def eigenDecompose(matrix: Matrix, eigenK: Int, tol : Double): (Vector, Matrix) = {
         // first convert the matrix to breeze matrix
-        val rows = matrix.rows.collect().map(vector => vector.toArray)
-        val numRows = rows.size
-        val numCols = rows(0).size
-        val values = (0 until numCols).flatMap{j =>
-            (0 until numRows).map{i =>
-                rows(i)(j)
-            }
-        }.toArray
-        val bdm = new BDM[Double](numRows, numCols, values)
-        val (sigmaSquares: BDV[Double], u: BDM[Double]) =
-            EigenValueDecomposition.symmetricEigs(v => bdm * v, numCols, eigenK, tol, IN_CORE_EIGEN_ITER)
-
-        val sigmas = brzSqrt(sigmaSquares)
-
-
-        val eigenD = Vectors.dense(sigmas.toArray)
+        val numRows = matrix.numRows
+        val numCols = matrix.numCols
+        val bdm = new BDM[Double](matrix.numRows, matrix.numCols, matrix.toArray)
+        val effectiveK = 1
+        var eigenD = null.asInstanceOf[Vector]
+        if (numRows > 1) {
+            val (sigmaSquares: BDV[Double], u: BDM[Double]) =
+                Linalg.symmetricEigs(v => bdm * v, numCols, effectiveK, tol, IN_CORE_EIGEN_ITER)
+            val sigmas = brzSqrt(sigmaSquares)
+            eigenD = Vectors.dense(sigmas.toArray)
+        } else {
+            eigenD = Vectors.dense(matrix.toArray)
+        }
         val eigenQ = Matrices.dense(numRows, numCols, bdm.valuesIterator.toArray)
 
         (eigenD, eigenQ)
@@ -217,18 +229,22 @@ object SpectralLearning {
      * @return
      *
      * @todo need to see how to take care of symmetric matrix stored in a unconventional manner
+     *       Taken care by the reduce by key
      */
-    private def *# (matrix: VertexMatrix, vector: Vector): RDD[(VertexId, Double)] = {
-        val map = vector.toArray.zipWithIndex.map(v => (v._2, v._1)).toMap
-        matrix.map{each =>
-            val arrays = each._2
-            val size = arrays._1.size
-            (each._1, (0 until size).map{i =>
-                val vid = arrays._1(i)
-                val value = arrays._2(i)
-                value * map(vid.toInt)
-            }.sum)
-        }
+    private def *# (matrix: VertexMatrix, vector: Vector): RDD[(VID, Double)] = {
+        val vecArray = vector.toArray
+        matrix.flatMap{row =>
+            val symmetricMap = new HyperXOpenHashMap[Int, Double]()
+            val rowId = row._1
+            val rowSize = row._2._1.size
+            val rowSum = (0 until rowSize).map{i =>
+                val colId = row._2._1(i)
+                val oldVal = row._2._2(i)
+                symmetricMap.update(colId, oldVal * vecArray(rowId))
+                oldVal * vecArray(colId)
+            }.sum
+            Iterator((rowId, rowSum)) ++ symmetricMap.iterator
+        }.reduceByKey((a, b) => a + b)
     }
 
     /**
@@ -251,7 +267,7 @@ object SpectralLearning {
      * @param vectors an i * m matrix, assuming i and m are both small
      * @return
      */
-    private def *# (matrix: BasisMatrix, vectors: Array[Vector]): RDD[(VertexId, Array[Double])] = {
+    private def *# (matrix: BasisMatrix, vectors: Array[Vector]): RDD[(VID, Array[Double])] = {
         val numVectors = vectors.size
         if (numVectors == 0){
             matrix
@@ -264,5 +280,14 @@ object SpectralLearning {
         }
     }
 
-    private val IN_CORE_EIGEN_ITER = 10
+    private def matrix2RowMatrix(matrix: Matrix): RowMatrix = {
+        val numRows = matrix.numRows
+        val numCols = matrix.numCols
+        val values = matrix.toArray
+        new RowMatrix(sc.parallelize(0 until numRows).map{i =>
+            Vectors.dense((0 until numCols).map(j => values(j * numRows + i)).toArray)
+        })
+    }
+
+    private val IN_CORE_EIGEN_ITER = 10000
 }

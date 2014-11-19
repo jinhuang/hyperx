@@ -1,6 +1,7 @@
 package org.apache.spark
 
-import org.apache.spark.hyperx.util.collection.{HyperXOpenHashMap, HyperXOpenHashSet}
+import org.apache.spark.hyperx.util.collection.{HyperXOpenHashMap,
+HyperXOpenHashSet}
 
 /**
  * <span class="badge" style="float: right;">ALPHA COMPONENT</span>

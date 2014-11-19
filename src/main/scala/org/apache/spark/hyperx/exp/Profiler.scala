@@ -1,15 +1,58 @@
 package org.apache.spark.hyperx.exp
 
-import java.io.{BufferedReader, FileReader}
-
 import org.apache.spark.hyperx.VertexId
 import org.apache.spark.hyperx.util.collection.HyperXOpenHashMap
+
+import scala.util.Random
 
 object Profiler {
 
     type HyperedgeId = Int
 
+    private def accu(map: HyperXOpenHashMap[VertexId, Double], key: VertexId, value: Double): Unit = {
+        if (map.hasKey(key)) {
+            map.update(key, map(key) + value)
+        } else {
+            map.update(key, value)
+        }
+    }
+
     def main(args: Array[String]): Unit = {
+
+        val map = new HyperXOpenHashMap[VertexId, HyperXOpenHashMap[VertexId, Double]]()
+
+        val start = System.currentTimeMillis()
+        (0 until 10000).foreach { f =>
+            val size = Random.nextInt(80)
+            (0 until size).foreach { i =>
+                val vId = Random.nextLong()
+                (0 until size / 2).foreach { j =>
+                    val uId = Random.nextLong()
+                    var id = uId
+                    var otherId = vId
+                    if ((uId + vId) % 2 == 0) {
+                        id = vId
+                        otherId = uId
+                    }
+                    if (!map.hasKey(id)) {
+                        map.update(id, new HyperXOpenHashMap[VertexId, Double]())
+
+                    }
+                    val idMap = map(id)
+                    accu(idMap, otherId, 0.0)
+                }
+            }
+        }
+
+//        val ret = map.map(i =>
+//            (i._1, i._2.toArrays)
+//        )
+//
+//        map.clear()
+
+        println(System.currentTimeMillis() - start)
+        val stop = readLine()
+        println(map.map(i => 1).reduce(_ + _))
 
 //        val size = 662998
 //
@@ -26,28 +69,28 @@ object Profiler {
 //
 //        val stop = readLine()
 //        println(ret.map(i => 1).reduce(_ + _))
-        val files = new java.io.File("/run/media/soone/Data/hyperx/result/statistics").listFiles()
-
-        val map = new HyperXOpenHashMap[VertexId, HyperXOpenHashMap[VertexId, Double]]()
-        files.foreach{ file =>
-            val reader = new BufferedReader(new FileReader(file))
-            var line = reader.readLine()
-
-            while(line != null) {
-                val array = line.replace("(", "").replace(")", "").split(",")
-                val id = array(0).toLong
-                val size = array(1).toInt
-                map.update(id, new HyperXOpenHashMap[VertexId, Double]())
-                val thisMap = map(id)
-                (0 until size).foreach{i =>
-                    thisMap.update(i.toLong, i.toDouble)
-                }
-                line = reader.readLine()
-            }
-        }
-
-        val stop = readLine()
-        println(map.map(i => 1).reduce(_ + _))
+//        val files = new java.io.File("/run/media/soone/Data/hyperx/result/statistics").listFiles()
+//
+//        val map = new HyperXOpenHashMap[VertexId, HyperXOpenHashMap[VertexId, Double]]()
+//        files.foreach{ file =>
+//            val reader = new BufferedReader(new FileReader(file))
+//            var line = reader.readLine()
+//
+//            while(line != null) {
+//                val array = line.replace("(", "").replace(")", "").split(",")
+//                val id = array(0).toLong
+//                val size = array(1).toInt
+//                map.update(id, new HyperXOpenHashMap[VertexId, Double]())
+//                val thisMap = map(id)
+//                (0 until size).foreach{i =>
+//                    thisMap.update(i.toLong, i.toDouble)
+//                }
+//                line = reader.readLine()
+//            }
+//        }
+//
+//        val stop = readLine()
+//        println(map.map(i => 1).reduce(_ + _))
 //        println(allPairs.map(i => 1).reduce(_ + _))
 
         // comparing two maps with map of a two-tuple

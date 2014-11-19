@@ -207,4 +207,37 @@ class HyperXOpenHashMap[@specialized(Long, Int) K: ClassTag,
         keySet.clear()
         _values = null
     }
+
+    def toArrays: (Array[K], Array[V]) = {
+        val keyAry = new HyperXPrimitiveVector[K]()
+        val valAry = new HyperXPrimitiveVector[V]()
+        iterator.foreach{pair=>
+            keyAry += pair._1
+            valAry += pair._2
+        }
+        (keyAry.trim().array, valAry.trim().array)
+    }
+
+    def mapOn(f: (V) => V): HyperXOpenHashMap[K, V] = {
+        this.iterator.foreach{pair=>
+            this.update(pair._1, f(pair._2))
+        }
+        this
+    }
+
+    def mapOn(f: (K, V) => V): HyperXOpenHashMap[K, V] = {
+        this.iterator.foreach{pair=>
+            this.update(pair._1, f(pair._1, pair._2))
+        }
+        this
+    }
+}
+
+private[hyperx]
+object HyperXOpenHashMap {
+    def apply[K: ClassTag, V: ClassTag](iter: Iterator[(K, V)]): HyperXOpenHashMap[K, V] = {
+        val map = new HyperXOpenHashMap[K, V]()
+        iter.foreach(pair => map.update(pair._1, pair._2))
+        map
+    }
 }
