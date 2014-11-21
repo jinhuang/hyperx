@@ -19,9 +19,13 @@ package org.apache.spark.hyperx.lib
 
 import java.util
 
-import breeze.linalg.{CSCMatrix => BSM, DenseMatrix => BDM, DenseVector => BDV, Matrix => BM, SparseVector => BSV, Vector => BV, axpy => brzAxpy, svd => brzSvd}
+import breeze.linalg.{DenseMatrix => BDM, DenseVector => BDV, Matrix => BM,
+SparseVector => BSV, Vector => BV, axpy => brzAxpy, svd => brzSvd,
+MatrixNotSquareException, MatrixNotSymmetricException, NotConvergedException,
+lowerTriangular}
 import breeze.numerics.{sqrt => brzSqrt}
 import com.github.fommil.netlib.ARPACK
+import com.github.fommil.netlib.LAPACK.{getInstance => lapack}
 import com.github.fommil.netlib.BLAS.{getInstance => blas}
 import org.apache.spark.Logging
 import org.apache.spark.annotation.Experimental
@@ -64,7 +68,7 @@ private[hyperx] object Linalg extends Logging {
         }
     }
 
-    def computeSVD(matrix: RowMatrix,
+    def parallelSVD(matrix: RowMatrix,
                       k: Int,
                       computeU: Boolean = false,
                       rCond: Double = 1e-9): SingularValueDecomposition[RowMatrix, Matrix] = {
@@ -72,10 +76,10 @@ private[hyperx] object Linalg extends Logging {
         val maxIter = math.max(300, k * 3)
         // numerical tolerance for invoking ARPACK
         val tol = 1e-10
-        computeSVD(matrix, k, computeU, rCond, maxIter, tol, "auto")
+        parallelSVD(matrix, k, computeU, rCond, maxIter, tol, "auto")
     }
 
-    def computeSVD(matrix: RowMatrix,
+    def parallelSVD(matrix: RowMatrix,
                                      k: Int,
                                      computeU: Boolean,
                                      rCond: Double,
@@ -115,7 +119,7 @@ private[hyperx] object Linalg extends Logging {
             case SVDMode.LocalARPACK =>
                 require(k < n, s"k must be smaller than n in local-eigs mode but got k=$k and n=$n.")
                 val G = toBreeze(computeGramianMatrix(matrix)).asInstanceOf[BDM[Double]]
-                symmetricEigs(v => G * v, n, k, tol, maxIter)
+                parallelEig(v => G * v, n, k, tol, maxIter)
             case SVDMode.LocalLAPACK =>
                 val G = toBreeze(computeGramianMatrix(matrix)).asInstanceOf[BDM[Double]]
                 val brzSvd.SVD(uFull: BDM[Double], sigmaSquaresFull: BDV[Double], _) = brzSvd(G)
@@ -126,7 +130,7 @@ private[hyperx] object Linalg extends Logging {
                         + " parent RDDs are also uncached.")
                 }
                 require(k < n, s"k must be smaller than n in dist-eigs mode but got k=$k and n=$n.")
-                symmetricEigs(multiplyGramianMatrixBy(matrix), n, k, tol, maxIter)
+                parallelEig(multiplyGramianMatrixBy(matrix), n, k, tol, maxIter)
         }
 
         val sigmas: BDV[Double] = brzSqrt(sigmaSquares)
@@ -180,6 +184,46 @@ private[hyperx] object Linalg extends Logging {
         }
     }
 
+    private[hyperx] def localEig(matrix: BM[Double]): (BDV[Double], BDM[Double]) = {
+
+//        requireSymmetricMatrix(matrix)
+
+        val A = lowerTriangular(matrix)
+        val N = matrix.rows
+        val evs = BDV.zeros[Double](N)
+        val lwork = scala.math.max(1, 3*N - 1)
+        val work = Array.ofDim[Double](lwork)
+        val info = new intW(0)
+
+        lapack.dsyev(
+            "V",
+            "L",
+            N, A.data, scala.math.max(1, N),
+            evs.data,
+            work, lwork,
+            info
+        )
+        assert(info.`val` >= 0)
+
+        if (info.`val` >0)
+            throw new NotConvergedException(NotConvergedException.Iterations)
+
+
+        val sorted = (0 until N).map(i => (evs(i), A.toArray.slice(i * N, (i + 1) * N))).sortBy(0 - _._1).toArray
+
+        val sortedEV = new BDV[Double](sorted.map(_._1).toArray)
+        val sortedA = new BDM[Double](N, N, sorted.map(_._2).reduce(_ ++ _))
+        (sortedEV, sortedA)
+    }
+
+    def requireSymmetricMatrix(mat: BM[Double]): Unit = {
+        if (mat.rows != mat.cols)
+            throw new MatrixNotSquareException
+
+        for (i <- 0 until mat.rows; j <- 0 until i)
+            if (mat(i, j) != mat(j, i))
+                throw new MatrixNotSymmetricException
+    }
 
     /**
      * Compute the leading k eigenvalues and eigenvectors on a symmetric square matrix using ARPACK.
@@ -198,7 +242,7 @@ private[hyperx] object Linalg extends Logging {
      *       for more details). The maximum number of Arnoldi update iterations is set to 300 in this
      *       function.
      */
-    private[hyperx] def symmetricEigs(
+    private[hyperx] def parallelEig(
                                         mul: BDV[Double] => BDV[Double],
                                         n: Int,
                                         k: Int,
@@ -325,7 +369,7 @@ private[hyperx] object Linalg extends Logging {
             }, combOp = (U1, U2) => U1 += U2)
     }
 
-    private def fromBreeze(breeze: BM[Double]): Matrix = {
+    private[hyperx] def fromBreeze(breeze: BM[Double]): Matrix = {
         breeze match {
             case dm: BDM[Double] =>
                 require(dm.majorStride == dm.rows,

@@ -232,8 +232,9 @@ object Analytics extends Logging {
                     fieldSeparator, weighted, numPart, inputMode,
                     partitionStrategy, hyperedgeStorageLevel, vertexStorageLevel).cache()
                 val maxIter = options.remove("maxIter").map(_.toInt).getOrElse(10)
-                val ret = SpectralLearning.run(hypergraph, 3, maxIter, 1e-6)
-                ret._2.saveAsTextFile(outputPath + "spectral")
+                val ret = SpectralLearning.run(hypergraph, 3, maxIter, 1e-9)
+                logInfo("HYPERX DEBUGGING: spectral finished")
+                sc.parallelize(ret._2).saveAsTextFile(outputPath + "spectral")
 
                 sc.stop()
         }
