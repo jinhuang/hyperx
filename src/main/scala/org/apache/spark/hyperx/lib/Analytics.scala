@@ -50,6 +50,7 @@ object Analytics extends Logging {
                 case "Greedy" => new GreedyPartition
                 case "Bi" => new BipartitePartition
                 case "Aweto" => new AwetoPartition
+                case "Replica" => new ReplicaPartition
                 case _ => throw new IllegalArgumentException("Invalid " +
                         "PartitionStrategy: " + v)
             }
@@ -184,9 +185,25 @@ object Analytics extends Logging {
 
                 val maxIter = options.remove("maxIter").map(_.toInt).getOrElse(100)
                 val ret = LabelPropagation.run(hypergraph, maxIter)
+
                 ret.vertices.saveAsTextFile(outputPath + "lp")
 
                 sc.stop()
+
+            case "lpp" =>
+                conf.set("hyperx.debug.k", numPart.toString)
+                val sc = new SparkContext(conf.setAppName("Label Propagation (" +
+                    fname + ")"))
+
+                val hypergraph = loadHypergraph(sc, fname, vertexInput,
+                    fieldSeparator, weighted, numPart, inputMode,
+                    partitionStrategy, hyperedgeStorageLevel, vertexStorageLevel)
+                    .cache()
+
+                val maxIter = options.remove("maxIter").map(_.toInt).getOrElse(100)
+                val ret = LabelPropagationPartition.run(hypergraph, maxIter, numPart)
+
+                ret.saveAsTextFile(outputPath + "lpp")
 
             case "bc" =>
 
@@ -235,6 +252,32 @@ object Analytics extends Logging {
                 val ret = SpectralLearning.run(hypergraph, 3, maxIter, 1e-9)
                 logInfo("HYPERX DEBUGGING: spectral finished")
                 sc.parallelize(ret._2).saveAsTextFile(outputPath + "spectral")
+
+                sc.stop()
+
+            case "smrt" =>
+                val sc = new SparkContext(conf.setAppName("Spectral (" + fname + ")"))
+
+                val hypergraph = loadHypergraph(sc, fname, vertexInput,
+                    fieldSeparator, weighted, numPart, inputMode,
+                    partitionStrategy, hyperedgeStorageLevel, vertexStorageLevel).cache()
+                val maxIter = options.remove("maxIter").map(_.toInt).getOrElse(10)
+                val ret = SpectralLearning.runMRT(hypergraph, 3, maxIter, 1e-9)
+                logInfo("HYPERX DEBUGGING: spectral finished")
+                sc.parallelize(ret._2).saveAsTextFile(outputPath + "spectral")
+
+                sc.stop()
+
+            case "matrix" =>
+                val sc = new SparkContext(conf.setAppName("Spectral (" + fname + ")"))
+
+                val hypergraph = loadHypergraph(sc, fname, vertexInput,
+                    fieldSeparator, weighted, numPart, inputMode,
+                    partitionStrategy, hyperedgeStorageLevel, vertexStorageLevel).cache()
+                println("HYPERX DEBUGGING " + hypergraph.vertices.map(_._1.toString).reduce(_ + " " + _))
+                val maxIter = options.remove("maxIter").map(_.toInt).getOrElse(10)
+                SpectralLearning.runTest(hypergraph)
+                logInfo("HYPERX DEBUGGING: spectral finished")
 
                 sc.stop()
         }

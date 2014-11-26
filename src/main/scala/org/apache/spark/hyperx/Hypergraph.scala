@@ -234,6 +234,8 @@ Serializable {
      */
     def groupHyperedges(merge: (ED, ED) => ED): Hypergraph[VD, ED]
 
+
+
     /**
      * Aggregates values from the neighboring hyperedges and vertices of each
      * vertex. The

@@ -475,12 +475,12 @@ class HypergraphOps[VD: ClassTag, ED: ClassTag](hypergraph: Hypergraph[VD,
 
         // multiplied by degree matrix
         // scale each pair value by its corresponding degree
-//        val localIncident = D.vertices.filter(v => v._2 > 0.0).map(v => (v._1.toInt, v._2)).collect().toMap
-//        val bcIncident = DHWH.context.broadcast(localIncident)
+        val localIncident = D.vertices.filter(v => v._2 > 0.0).map(v => (v._1.toInt, v._2)).collect().toMap
+        val bcIncident = DHWH.context.broadcast(localIncident)
         val laplacian = DHWH.map{each =>
             val arrays = each._2.mapOn({(vid, d) =>
-                //val scale = d * bcIncident.value(vid.toInt)
-                val scale = d
+                val scale = 0.5 * d * bcIncident.value(vid.toInt)
+//                val scale = d
                 if (vid == each._1) {
                     1.0 - scale
                 } else {

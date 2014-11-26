@@ -14,7 +14,6 @@ class GreedyPartition extends PartitionStrategy{
             val demands = Array.fill(k)(new mutable.HashSet[VertexId]())
             val degrees = Array.fill(k)(0)
             val onepass = p.map{h =>
-                val hSet = HyperUtils.iteratorFromHString(h).toSet
                 val pid = (0 until k).map(i =>
                     (i, demands(i).size * costDemand +
                         degrees(i) * costDegree)).minBy(_._2)._1

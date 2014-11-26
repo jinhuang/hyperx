@@ -17,7 +17,7 @@ class AwetoPartition extends PartitionStrategy{
             part.map{h =>
                 val pid = (0 until k).map(i =>
                     (i, degrees(i))).minBy(_._2)._1
-                degrees(pid) += Math.pow(HyperUtils.countDegreeFromHString(h), 2).toInt
+                degrees(pid) += HyperUtils.countDegreeFromHString(h)
                 (h, pid)
         }}.cache()
 

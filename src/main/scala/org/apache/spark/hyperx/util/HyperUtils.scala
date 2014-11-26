@@ -50,6 +50,10 @@ object HyperUtils {
         set
     }
 
+    def setFromHString(s: String): Set[VertexId] = {
+        iteratorFromHString(s).toSet
+    }
+
     def hyperedgeFromHString(s: String): (VertexSet, VertexSet) = {
         val array = s.split(";")
         (setFromString(array(0)), setFromString(array(1)))
@@ -83,10 +87,20 @@ object HyperUtils {
         h._1.iterator ++ h._2.iterator
     }
 
+    def pidFromPartitionedString(s: String): PartitionId = {
+        val array = s.split(";")
+        array(0).trim.toInt
+    }
+
     def iteratorFromPartitionedString(s: String): Iterator[VertexId] = {
         val array = s.split(";")
         (array(1).trim.split(" ").map(_.toLong) ++
         array(2).trim.split(" ").map(_.toLong)).iterator
+    }
+
+    def hStringFromPartitionedString(s: String): String = {
+        val array = s.split(";")
+        array(1).trim + ";" + array(2).trim
     }
 
     def pairFromPartitionedString(s: String): (PartitionId, String) = {

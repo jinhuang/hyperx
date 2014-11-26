@@ -33,6 +33,100 @@ object SpectralLearning extends Logging{
         lanczos(laplacian, eigenK, numIter, tol)
     }
 
+    def runMRT[VD: ClassTag, ED: ClassTag](hypergraph: Hypergraph[VD, ED],
+               eigenK: Int, numIter: Int, tol: Double): (Array[Double], Array[Double]) = {
+        mrtLanczos(hypergraph, eigenK, numIter, tol)
+    }
+
+    def runTest[VD: ClassTag, ED: ClassTag](hypergraph: Hypergraph[VD, ED]): Unit = {
+        sc = hypergraph.vertices.context
+        val laplacian = hypergraph.laplacian.map(each => (each._1.toInt, (each._2._1.map(_.toInt), each._2._2))).cache()
+        val result = matVecMult(laplacian, new BDV[Double](Array(1.0, 2.0, 3.0, 4.0)))
+
+        logInfo("HYPERX DEBUGGING: result " + result.toArray.map(_.toString).reduce(_ + " " + _))
+
+        val spectralH = hypergraph.outerJoinVertices(hypergraph.incidents){(vid, vdata, deg) =>
+            deg match {
+                case someDeg: Some[Int] =>
+                    1.0 / Math.sqrt(someDeg.get)
+                case None =>
+                    0.0
+            }}.cache()
+        val mrtResult = matVecMult(spectralH, new BDV[Double](Array(1.0, 2.0, 3.0, 4.0)))
+        logInfo("HYPERX DEBUGGING: mrt result " + mrtResult.toArray.map(_.toString).reduce(_ + " " + _))
+    }
+
+    private def mrtLanczos[VD: ClassTag, ED: ClassTag](h: Hypergraph[VD, ED], eigenK: Int, numIter: Int, tol: Double): (Array[Double], Array[Double]) = {
+        val spectralH = h.outerJoinVertices(h.incidents){(vid, vdata, deg) =>
+            deg match {
+                case someDeg: Some[Int] =>
+                    1.0 / Math.sqrt(someDeg.get)
+                case None =>
+                    0.0
+            }}.cache()
+
+        val n = spectralH.vertices.count().toInt
+
+        val alpha, beta = new HyperXPrimitiveVector[Double]()
+        var alphaLast, alphaCur, betaLast, betaCur = 0.0
+        var vLast, vCur = BDV.zeros[Double](n)
+        val b = new BDV[Double]((0 until n).map(i => Random.nextDouble()).toArray)
+        //        val b = new BDV[Double](Array.fill(n)(2.0))
+        vCur = (b / norm(b)).asInstanceOf[BDV[Double]]
+        var vMatrix = new BDM[Double](n, 1, vCur.toArray)
+        var i = 0
+
+        while((i == 0 || Math.abs(betaCur - 0.0) > tol) && i < numIter) {
+            val start = System.currentTimeMillis()
+            val dimension = i + 1
+            var v = matVecMult(spectralH, vCur)
+            alphaCur = sum(vCur :* v)
+            v = v - vCur * alphaCur
+            v = v - vLast * betaLast
+            betaCur = norm(v)
+            alpha += alphaCur
+            alphaLast = alphaCur
+
+            val alphaVector = new BDV[Double](alpha.array.slice(0, i + 1))
+            val betaVector = new BDV[Double]((beta.array.slice(0, i).iterator ++ Iterator(betaCur)).toArray)
+
+            val t = tridiongonal(alphaVector, betaVector)
+            val (_, eigQ) = Linalg.localEig(t)
+
+            var reflag = false
+            (0 to i).foreach{j =>
+                if (Math.abs(betaCur * eigQ.toArray(j * dimension + i)) <= Math.sqrt(tol) * l2Norm(t)) {
+                    reflag = true
+                    val rMatrix = vMatrix * new BDM[Double](dimension, 1, eigQ.toArray.slice(j *
+                        dimension, (j + 1) * dimension))
+                    val r = new BDV[Double](rMatrix.asInstanceOf[BDM[Double]].toArray)
+                    v = v - r * sum(r :* v)
+                }
+            }
+
+            if (reflag) {
+                betaCur = norm(v)
+            }
+            beta += betaCur
+            betaLast = betaCur
+            vLast = vCur
+            vCur = v / betaCur
+            i += 1
+            vMatrix = new BDM[Double](n, i + 1, vMatrix.toArray ++ vCur.toArray)
+            val duration = System.currentTimeMillis() - start
+            println(s"HYPERX: iterator $i with beta $betaCur in $duration ms")
+        }
+
+        val alphaVector = new BDV[Double](alpha.array.slice(0, i))
+        val betaVector = new BDV[Double](beta.array.slice(0, i))
+        val t = tridiongonal(alphaVector, betaVector)
+        val (eigV, eigQ) = Linalg.localEig(t)
+        vMatrix = new BDM[Double](n, i, vMatrix.toArray.slice(0, i * n))
+        val retVal = eigV.toArray.slice(0, eigenK)
+        val retVec = (vMatrix * new BDM[Double](i, eigenK, eigQ.toArray.slice(0, eigenK * i))).asInstanceOf[BDM[Double]].toArray
+        (retVal, retVec)
+    }
+
     private def lanczos(matrix: VertexSparseMatrix, eigenK: Int, numIter: Int, tol: Double): (Array[Double], Array[Double]) = {
         val n = matrix.count().toInt
 
@@ -135,5 +229,24 @@ object SpectralLearning extends Logging{
             Iterator((rowId, rowSum)) ++ colArray.trim().array.iterator
         }.reduceByKey(_ + _).collectAsMap()
         new BDV[Double]((0 until vector.length).map(i => map.getOrElse(i, 0.0)).toArray)
+    }
+
+    private def matVecMult(h: Hypergraph[Double, _], vector: BDV[Double]): BDV[Double] = {
+        val start = System.currentTimeMillis()
+        val ret = h.mapReduceTuples[Double]({tuple =>
+            val weight = tuple.attr match {
+                case doubleWeight: Double =>
+                    doubleWeight
+                case _ =>
+                    1.0
+            }
+
+            val data = (tuple.srcAttr.map(v => v._2 * vector(v._1.toInt)).iterator ++ tuple.dstAttr.map(v => v._2 * vector(v._1.toInt))).sum * weight
+            (tuple.srcAttr.iterator ++ tuple.dstAttr.iterator).map{u =>
+                (u._1, u._2 * data)
+            }
+        }, {(a, b) => a + b}).mapValues((vid, vval) => vector(vid.toInt) - 0.5 * vval).collectAsMap()
+        logInfo("HYPERX DEBUGGING: mrt " + (System.currentTimeMillis() - start))
+        new BDV[Double]((0 until vector.length).map(i => ret.getOrElse(i.toLong, 0.0)).toArray)
     }
 }

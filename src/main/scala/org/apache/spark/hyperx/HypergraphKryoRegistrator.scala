@@ -42,5 +42,6 @@ class HypergraphKryoRegistrator extends KryoRegistrator {
         kryo.register(classOf[GreedyPartition])
         kryo.register(classOf[BipartitePartition])
         kryo.register(classOf[AwetoPartition])
+        kryo.register(classOf[ReplicaPartition])
     }
 }

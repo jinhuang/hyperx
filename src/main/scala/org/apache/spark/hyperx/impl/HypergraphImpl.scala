@@ -172,7 +172,10 @@ class HypergraphImpl[VD: ClassTag, ED: ClassTag] protected(
                 Iterator[(HyperedgeId, ED2)])
     : Hypergraph[VD, ED2] = {
         val mapUsesSrcAttr = accessesVertexAttr(f, "srcAttr")
-        val mapUsesDstAttr = accessesVertexAttr(f, "dstAttr")
+//        val mapUsesDstAttr = accessesVertexAttr(f, "dstAttr")
+    val mapUsesDstAttr =  true
+
+//    println("HYPERX DEBUGGING: uses upgrade " + mapUsesSrcAttr + " " + mapUsesDstAttr)
 
         replicatedVertexView.upgrade(vertices, mapUsesSrcAttr, mapUsesDstAttr)
         val newHyperedges = replicatedVertexView.hyperedges
@@ -538,19 +541,7 @@ object HypergraphImpl extends Logging {
         input: RDD[String], numParts: Int,
         vertexLevel: StorageLevel = StorageLevel.MEMORY_ONLY,
         hyperedgeLevel: StorageLevel = StorageLevel.MEMORY_ONLY) = {
-        // randomized vertex partitioning
-        val vertices = input.flatMap(line =>
-            HyperUtils.iteratorFromPartitionedString(line)).distinct()
-                .map(v => (v, Random.nextInt(numParts)))
-        val collectedVertices = vertices.collectAsMap()
-        val vertexMap = new HyperXOpenHashMap[VertexId, PartitionId]()
-        collectedVertices.foreach(e => vertexMap.update(e._1, e._2))
-        val partitioner: Partitioner =
-            new VertexPartitioner(numParts, vertexMap)
-        val localVertices = vertices.map(v =>
-            Tuple2(v._2, (v._1, null.asInstanceOf[VD])))
-                .partitionBy(new HashPartitioner(numParts))
-                .flatMap(p => Iterator(p._2))
+
 //        val hyperedges: RDD[(Int, HyperedgePartition[ED, VD])] =
         val hyperedges: RDD[(Int, FlatHyperedgePartition[ED, VD])] =
             input.map(HyperUtils.pairFromPartitionedString)
@@ -569,6 +560,29 @@ object HypergraphImpl extends Logging {
         val hyperedgesRDD =
             HyperedgeRDD.fromHyperedgePartitions(hyperedges, hyperedgeLevel)
 
+        // randomized vertex partitioning
+//        val vertices = input.flatMap(line =>
+//            HyperUtils.iteratorFromPartitionedString(line)).distinct()
+//            .map(v => (v, Random.nextInt(numParts)))
+
+        val hRDD = input.map(line => (HyperUtils.hStringFromPartitionedString(line), HyperUtils.pidFromPartitionedString(line)))
+
+        val vertices = input.flatMap { line =>
+            val pid =HyperUtils.pidFromPartitionedString(line)
+            HyperUtils.iteratorFromPartitionedString(line).map(v => (v, pid))
+        }.groupBy(_._1).mapValues(iter => iter.map(i => (i._2, Random.nextInt())).maxBy(_._2)._1)
+
+        PartitionStrategy.printStatistics(hRDD, vertices, numParts)
+
+        val collectedVertices = vertices.collectAsMap()
+        val vertexMap = new HyperXOpenHashMap[VertexId, PartitionId]()
+        collectedVertices.foreach(e => vertexMap.update(e._1, e._2))
+        val partitioner: Partitioner =
+            new VertexPartitioner(numParts, vertexMap)
+        val localVertices = vertices.map(v =>
+            Tuple2(v._2, (v._1, null.asInstanceOf[VD])))
+            .partitionBy(new HashPartitioner(numParts))
+            .flatMap(p => Iterator(p._2))
         val vertexRDD = VertexRDD[VD](localVertices, hyperedgesRDD,
             null.asInstanceOf[VD], partitioner, vertexLevel)
         new HypergraphImpl(vertexRDD, new ReplicatedVertexView(hyperedgesRDD))
