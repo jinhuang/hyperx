@@ -54,6 +54,9 @@ trait PartitionStrategy extends Serializable with Logging {
             .reduceByKey(_.union(_)).partitionBy(new HashPartitioner(k)).cache()
         val locals = vRDD.map(v => Tuple2(v._2, Set(v._1))).reduceByKey(_ ++ _).partitionBy(new HashPartitioner(k)).cache()
 
+        logInfo("HYPERX DEBUGGING: demands " + demands.map(each => each._1 + " : " + each._2.size).reduce(_ + " ; " + _ ))
+        logInfo("HYPERX DEBUGGING: locals " + locals.map(each => each._1 + " : " + each._2.size).reduce(_ + " ; " + _))
+
         val replicas = demands.zipPartitions(locals){(d, l) =>
             val dSet = d.filter(_._2.size > 0).map(_._2).reduce(_ ++ _)
             val lSet = l.filter(_._2.size > 0).map(_._2).reduce(_ ++ _)
